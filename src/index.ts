@@ -71,7 +71,7 @@ const subscribeToTicks = (symbol: TSymbol) => {
   const ticksStream = apiManager.augmentedSubscribe("ticks_history", {
     ticks_history: symbol,
     end: "latest",
-    count: 21,
+    count: 21 as unknown as undefined,
   });
 
   ticksStream.subscribe((data) => {
