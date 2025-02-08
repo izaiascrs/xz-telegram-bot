@@ -13,8 +13,8 @@ const config: MoneyManagement = {
   type: "martingale-soros",
   initialStake: 0.35,
   profitPercent: 22,
-  maxStake: 100,
-  maxLoss: 10,
+  maxStake: 150,
+  maxLoss: 4,
   sorosLevel: 10,
 };
 
