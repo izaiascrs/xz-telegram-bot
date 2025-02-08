@@ -65,7 +65,7 @@ const stopBot = () => {
   waitingVirtualLoss = false;
   tickCount = 0;
   telegramManager.sendMessage('🛑 Bot parado e desconectado dos serviços Deriv');
-};
+}; 
 
 const subscribeToTicks = (symbol: TSymbol) => {
   const ticksStream = apiManager.augmentedSubscribe("ticks_history", {
