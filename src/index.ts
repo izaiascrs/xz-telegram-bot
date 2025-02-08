@@ -36,7 +36,7 @@ const telegramManager = new TelegramManager();
 const ticksMap = new Map<TSymbol, number[]>([]);
 
 const checkStakeAndBalance = (stake: number) => {
-  if (stake <= 0 || moneyManager.getCurrentBalance() <= 0) {
+  if (stake <= 0) { // moneyManager.getCurrentBalance() <= 0
     telegramManager.sendMessage('🚨 *ALERTA CRÍTICO*\n\n' +
       '❌ Bot finalizado automaticamente!\n' +
       '💰 Saldo ou stake chegou a zero\n' +
@@ -210,10 +210,6 @@ const subscribeToOpenOrders = () => {
     if (status && status !== "open") {
       const isWin = status === "won";
       moneyManager.updateLastTrade(isWin);
-      
-      if (!checkStakeAndBalance(moneyManager.calculateNextStake())) {
-        return;
-      }
       
       telegramManager.updateTradeResult(isWin, moneyManager.getCurrentBalance());
       
