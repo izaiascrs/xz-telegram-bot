@@ -30,7 +30,7 @@ let subscriptions: {
   contracts?: any;
 } = {};
 
-const moneyManager = new RealMoneyManager(config, 1000);
+const moneyManager = new RealMoneyManager(config, 100);
 const telegramManager = new TelegramManager();
 
 const ticksMap = new Map<TSymbol, number[]>([]);
