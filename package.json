@@ -1,0 +1,29 @@
+{
+  "name": "deriv-bot-over-one",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@deriv/api-types": "^1.0.2589",
+    "@deriv/deriv-api": "^1.0.13",
+    "@types/node": "^22.13.1",
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "@types/ws": "^8.5.14",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "node-telegram-bot-api": "^0.63.0",
+    "tsx": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
