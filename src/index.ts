@@ -10,12 +10,12 @@ type TSymbol = (typeof symbols)[number];
 const symbols = ["R_10"] as const;
 
 const config: MoneyManagement = {
-  type: "martingale-soros",
+  type: "fixed",
   initialStake: 0.35,
   profitPercent: 22,
-  maxStake: 150,
-  maxLoss: 4,
-  sorosLevel: 10,
+  maxStake: 100,
+  maxLoss: 5000,
+  sorosLevel: 1,
 };
 
 let isAuthorized = false;
@@ -229,8 +229,8 @@ const subscribeToOpenOrders = () => {
       isTrading = false;
       
       if (!isWin) {
-        // waitingVirtualLoss = true;
-        // telegramManager.sendMessage('🔄 Ativando verificação de loss virtual');
+        waitingVirtualLoss = true;
+        telegramManager.sendMessage('🔄 Ativando verificação de loss virtual');
       }
     }
   });
