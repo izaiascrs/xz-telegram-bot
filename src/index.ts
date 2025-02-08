@@ -10,12 +10,12 @@ type TSymbol = (typeof symbols)[number];
 const symbols = ["R_10"] as const;
 
 const config: MoneyManagement = {
-  type: "fixed",
+  type: "martingale-soros",
   initialStake: 0.35,
   profitPercent: 22,
-  maxStake: 100,
+  maxStake: 200,
   maxLoss: 5000,
-  sorosLevel: 1,
+  sorosLevel: 5,
 };
 
 let isAuthorized = false;
