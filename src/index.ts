@@ -25,6 +25,11 @@ let tickCount = 0;
 let activeSymbolSubscription: any = null;
 let activeContractSubscription: any = null;
 
+let subscriptions: {
+  ticks?: any;
+  contracts?: any;
+} = {};
+
 const moneyManager = new RealMoneyManager(config, 1000);
 const telegramManager = new TelegramManager();
 
@@ -43,29 +48,59 @@ const checkStakeAndBalance = (stake: number) => {
   return true;
 };
 
-const startBot = async () => {
-  if (!isAuthorized) {
-    await authorize();
+const clearSubscriptions = async () => {
+  // Limpar todas as subscrições existentes
+  if (subscriptions.ticks) {
+    try {
+      await subscriptions.ticks.complete();
+      subscriptions.ticks.unsubscribe();
+    } catch (error) {
+      console.error('Erro ao limpar subscrição de ticks:', error);
+    }
   }
-  activeSymbolSubscription = subscribeToTicks("R_10");
-  activeContractSubscription = subscribeToOpenOrders();
-  telegramManager.sendMessage('🤖 Bot iniciado e conectado aos serviços Deriv');
-};
 
-const stopBot = () => {
-  if (activeSymbolSubscription) {
-    activeSymbolSubscription.unsubscribe();
-    activeSymbolSubscription = null;
+  if (subscriptions.contracts) {
+    try {
+      await subscriptions.contracts.complete();
+      subscriptions.contracts.unsubscribe();
+    } catch (error) {
+      console.error('Erro ao limpar subscrição de contratos:', error);
+    }
   }
-  if (activeContractSubscription) {
-    activeContractSubscription.unsubscribe();
-    activeContractSubscription = null;
-  }
+
+  // Resetar objeto de subscrições
+  subscriptions = {};
+  
+  // Resetar estado do bot
   isTrading = false;
   waitingVirtualLoss = false;
   tickCount = 0;
+  ticksMap.clear();
+};
+
+const startBot = async () => {
+  // Garantir que todas as subscrições antigas sejam limpas
+  await clearSubscriptions();
+
+  if (!isAuthorized) {
+    await authorize();
+  }
+
+  try {
+    // Criar novas subscrições
+    subscriptions.ticks = subscribeToTicks("R_10");
+    subscriptions.contracts = subscribeToOpenOrders();
+    telegramManager.sendMessage('🤖 Bot iniciado e conectado aos serviços Deriv');
+  } catch (error) {
+    telegramManager.sendMessage('❌ Erro ao iniciar o bot. Tentando parar e limpar as conexões...');
+    await stopBot();
+  }
+};
+
+const stopBot = async () => {
+  await clearSubscriptions();
   telegramManager.sendMessage('🛑 Bot parado e desconectado dos serviços Deriv');
-}; 
+};
 
 const subscribeToTicks = (symbol: TSymbol) => {
   const ticksStream = apiManager.augmentedSubscribe("ticks_history", {
@@ -74,8 +109,11 @@ const subscribeToTicks = (symbol: TSymbol) => {
     count: 21 as unknown as undefined,
   });
 
-  ticksStream.subscribe((data) => {
-    if (!telegramManager.isRunningBot()) return;
+  const subscription = ticksStream.subscribe((data) => {
+    if (!telegramManager.isRunningBot()) {
+      subscription.unsubscribe();
+      return;
+    }
 
     if (data.msg_type === "history") {
       const ticksPrices = data.history?.prices || [];
@@ -155,12 +193,17 @@ const subscribeToTicks = (symbol: TSymbol) => {
       }
     }
   });
+
   return ticksStream;
 };
 
 const subscribeToOpenOrders = () => {
   const contractSub = apiManager.augmentedSubscribe("proposal_open_contract");
-  contractSub.subscribe((data) => {
+  const subscription = contractSub.subscribe((data) => {
+    if (!telegramManager.isRunningBot()) {
+      subscription.unsubscribe();
+      return;
+    }
     const contract = data.proposal_open_contract;
     const status = contract?.status;
     const profit = contract?.profit;
@@ -191,6 +234,7 @@ const subscribeToOpenOrders = () => {
       }
     }
   });
+
   return contractSub;
 };
 
@@ -213,17 +257,18 @@ function main() {
     authorize();
   });
 
-  apiManager.connection.addEventListener("close", () => {
+  apiManager.connection.addEventListener("close", async () => {
     isAuthorized = false;
+    await clearSubscriptions();
     telegramManager.sendMessage('⚠️ Conexão WebSocket fechada');
   });
 
   // Observadores do estado do bot do Telegram
-  setInterval(() => {
-    if (telegramManager.isRunningBot() && !activeSymbolSubscription) {
-      startBot();
-    } else if (!telegramManager.isRunningBot() && activeSymbolSubscription) {
-      stopBot();
+  setInterval(async () => {
+    if (telegramManager.isRunningBot() && !subscriptions.ticks) {
+      await startBot();
+    } else if (!telegramManager.isRunningBot() && (subscriptions.ticks || subscriptions.contracts)) {
+      await stopBot();
     }
   }, 1000);
 }
