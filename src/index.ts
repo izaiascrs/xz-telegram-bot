@@ -44,7 +44,7 @@ function calcularStakeRecuperacao(valorRecuperar: number, pagamentoPercentual: n
 }
 
 const checkStakeAndBalance = (stake: number) => {
-  if (stake <= 0) { // moneyManager.getCurrentBalance() <= 0
+  if (stake < 0.35 || moneyManager.getCurrentBalance() < 0.35) { // moneyManager.getCurrentBalance() <= 0
     telegramManager.sendMessage('🚨 *ALERTA CRÍTICO*\n\n' +
       '❌ Bot finalizado automaticamente!\n' +
       '💰 Saldo ou stake chegou a zero\n' +
