@@ -24,6 +24,7 @@ let waitingVirtualLoss = false;
 let tickCount = 0;
 let activeSymbolSubscription: any = null;
 let activeContractSubscription: any = null;
+let consecutiveWins = 0;
 
 let subscriptions: {
   ticks?: any;
@@ -34,6 +35,13 @@ const moneyManager = new RealMoneyManager(config, 100);
 const telegramManager = new TelegramManager();
 
 const ticksMap = new Map<TSymbol, number[]>([]);
+
+function calcularStakeRecuperacao(valorRecuperar: number, pagamentoPercentual: number): number {
+    if (pagamentoPercentual <= 0) {
+        throw new Error("O pagamento percentual deve ser maior que 0.");
+    }
+    return valorRecuperar * 100 / pagamentoPercentual;
+}
 
 const checkStakeAndBalance = (stake: number) => {
   if (stake <= 0) { // moneyManager.getCurrentBalance() <= 0
@@ -160,7 +168,12 @@ const subscribeToTicks = (symbol: TSymbol) => {
     } else {
       if (lastTick === 3) {
         if (!waitingVirtualLoss) {
-          const amount = moneyManager.calculateNextStake();
+          let amount = moneyManager.calculateNextStake();
+          const loss = +(moneyManager.getCurrentBalance().toFixed(2)) - 100;
+          
+          if(loss < 0 && consecutiveWins === 3){
+            amount = calcularStakeRecuperacao(Math.abs(loss), 22);
+          }
           
           if (!checkStakeAndBalance(amount)) {
             return;
@@ -223,8 +236,13 @@ const subscribeToOpenOrders = () => {
       );
 
       isTrading = false;
+
+      if(isWin) {
+        consecutiveWins++;
+      }
       
       if (!isWin) {
+        consecutiveWins = 0;
         // waitingVirtualLoss = true;
         // telegramManager.sendMessage('🔄 Ativando verificação de loss virtual');
       }
