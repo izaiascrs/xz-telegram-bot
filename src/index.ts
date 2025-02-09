@@ -173,6 +173,7 @@ const subscribeToTicks = (symbol: TSymbol) => {
           
           if(loss < 0 && consecutiveWins === 3){
             amount = calcularStakeRecuperacao(Math.abs(loss), 22);
+            moneyManager.setStake(amount);
           }
           
           if (!checkStakeAndBalance(amount)) {
