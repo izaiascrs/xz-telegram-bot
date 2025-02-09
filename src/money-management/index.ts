@@ -17,6 +17,12 @@ export class RealMoneyManager {
     this.accumulatedProfit = 0;
   }
 
+  setStake(value:number) {
+    if(value >= 0.35) {
+      this.currentStake = value;
+    }
+  }
+
   calculateNextStake(): number {
     if (this.currentBalance <= 0) {
       console.warn('Saldo insuficiente');
