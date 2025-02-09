@@ -44,7 +44,7 @@ function calcularStakeRecuperacao(valorRecuperar: number, pagamentoPercentual: n
 }
 
 const checkStakeAndBalance = (stake: number) => {
-  if (stake <= 0) { // moneyManager.getCurrentBalance() <= 0
+  if (stake < 0.35 || moneyManager.getCurrentBalance() < 0.35) { // moneyManager.getCurrentBalance() <= 0
     telegramManager.sendMessage('🚨 *ALERTA CRÍTICO*\n\n' +
       '❌ Bot finalizado automaticamente!\n' +
       '💰 Saldo ou stake chegou a zero\n' +
@@ -173,6 +173,10 @@ const subscribeToTicks = (symbol: TSymbol) => {
           
           if(loss < 0 && consecutiveWins === 3){
             amount = calcularStakeRecuperacao(Math.abs(loss), 22);
+            amount = +(amount.toFixed(2));
+            if(amount < 0.35 && moneyManager.getCurrentBalance() >= 0.35) {
+              amount = 0.35;
+            }
             moneyManager.setStake(amount);
           }
           
