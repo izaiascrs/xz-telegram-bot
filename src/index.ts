@@ -225,8 +225,8 @@ const subscribeToOpenOrders = () => {
       isTrading = false;
       
       if (!isWin) {
-        waitingVirtualLoss = true;
-        telegramManager.sendMessage('🔄 Ativando verificação de loss virtual');
+        // waitingVirtualLoss = true;
+        // telegramManager.sendMessage('🔄 Ativando verificação de loss virtual');
       }
     }
   });
