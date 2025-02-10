@@ -11,7 +11,7 @@ const symbols = ["R_10"] as const;
 
 const config: MoneyManagement = {
   type: "fixed",
-  initialStake: 0.35,
+  initialStake: 1,
   profitPercent: 22,
   maxStake: 200,
   maxLoss: 5000,
@@ -271,7 +271,8 @@ const authorize = async () => {
 };
 
 function main() {
-  apiManager.connection.addEventListener("open", () => {
+  apiManager.connection.addEventListener("open", async () => {
+    await clearSubscriptions();
     telegramManager.sendMessage('🌐 Conexão WebSocket estabelecida');
     authorize();
   });
