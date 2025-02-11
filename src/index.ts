@@ -11,7 +11,7 @@ const symbols = ["R_10"] as const;
 
 const config: MoneyManagement = {
   type: "fixed",
-  initialStake: 1,
+  initialStake: 0.35,
   profitPercent: 22,
   maxStake: 200,
   maxLoss: 5000,
