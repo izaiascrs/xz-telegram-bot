@@ -272,7 +272,6 @@ const authorize = async () => {
 
 function main() {
   apiManager.connection.addEventListener("open", async () => {
-    await clearSubscriptions();
     telegramManager.sendMessage('🌐 Conexão WebSocket estabelecida');
     authorize();
   });
