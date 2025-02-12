@@ -75,48 +75,176 @@ async function seed() {
 
 async function createSequences(db: Database) {
   const now = Date.now();
-  const today = new Date().toISOString().split('T')[0];
+  const sequences = [
+    // Sequência atual em andamento
+    {
+      start_timestamp: now - 3600000,
+      end_timestamp: now,
+      date: new Date().toISOString().split('T')[0],
+      sequence_type: 'current',
+      trades_count: 15,
+      wins: 12,
+      win_rate: 80.0,
+      is_completed: 0,
+      reference_win_rate: null,
+      completed_win_rate: null
+    },
+    
+    // Sequência de monitoramento em andamento
+    {
+      start_timestamp: now - 1800000,
+      end_timestamp: now,
+      date: new Date().toISOString().split('T')[0],
+      sequence_type: 'next',
+      trades_count: 8,
+      wins: 7,
+      win_rate: 87.5,
+      is_completed: 0,
+      reference_win_rate: 75.0,
+      completed_win_rate: null
+    },
+    
+    // Sequência completa com taxa baixa
+    {
+      start_timestamp: now - 86400000, // 1 dia atrás
+      end_timestamp: now - 43200000,
+      date: new Date(now - 86400000).toISOString().split('T')[0],
+      sequence_type: 'current',
+      trades_count: 25,
+      wins: 18,
+      win_rate: 72.0,
+      is_completed: 1,
+      reference_win_rate: null,
+      completed_win_rate: 72.0
+    },
+    
+    // Sequência de monitoramento completa com melhoria
+    {
+      start_timestamp: now - 86400000,
+      end_timestamp: now - 43200000,
+      date: new Date(now - 86400000).toISOString().split('T')[0],
+      sequence_type: 'next',
+      trades_count: 25,
+      wins: 21,
+      win_rate: 84.0,
+      is_completed: 1,
+      reference_win_rate: 72.0,
+      completed_win_rate: 84.0
+    },
+    
+    // Sequência de monitoramento resetada
+    {
+      start_timestamp: now - 172800000, // 2 dias atrás
+      end_timestamp: now - 129600000,
+      date: new Date(now - 172800000).toISOString().split('T')[0],
+      sequence_type: 'next',
+      trades_count: 12,
+      wins: 8,
+      win_rate: 66.7,
+      is_completed: 1,
+      reference_win_rate: 75.0,
+      completed_win_rate: 66.7
+    }
+  ];
 
-  // Sequência atual em andamento
-  await db.run(`
-    INSERT INTO sequence_stats (
-      start_timestamp, end_timestamp, date, sequence_type,
-      trades_count, wins, win_rate, reference_win_rate
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, [
-    now - 3600000,
-    now,
-    today,
-    'current',
-    15,
-    12,
-    80.0,
-    null
-  ]);
+  // Inserir todas as sequências
+  for (const seq of sequences) {
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        INSERT INTO sequence_stats (
+          start_timestamp, end_timestamp, date, sequence_type,
+          trades_count, wins, win_rate, is_completed,
+          reference_win_rate, completed_win_rate
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        seq.start_timestamp,
+        seq.end_timestamp,
+        seq.date,
+        seq.sequence_type,
+        seq.trades_count,
+        seq.wins,
+        seq.win_rate,
+        seq.is_completed,
+        seq.reference_win_rate,
+        seq.completed_win_rate
+      ], function(err) {
+        if (err) {
+          console.error('Erro ao inserir sequência:', err);
+          reject(err);
+          return;
+        }
+        console.log(`Sequência inserida com ID: ${this.lastID}`);
+        resolve();
+      });
+    });
+  }
 
-  // Próxima sequência em andamento
-  await db.run(`
-    INSERT INTO sequence_stats (
-      start_timestamp, end_timestamp, date, sequence_type,
-      trades_count, wins, win_rate, reference_win_rate
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, [
-    now - 1800000,
-    now,
-    today,
-    'next',
-    8,
-    7,
-    87.5,
-    75.0
-  ]);
+  // Verificar se as sequências foram inseridas
+  await new Promise<void>((resolve) => {
+    db.get('SELECT COUNT(*) as count FROM sequence_stats', [], (err, result: any) => {
+      if (err) {
+        console.error('Erro ao contar sequências após inserção:', err);
+      } else {
+        console.log(`Total de sequências após seed: ${result.count}`);
+      }
+      resolve();
+    });
+  });
 }
 
 async function clearDatabase(db: Database): Promise<void> {
   return new Promise((resolve, reject) => {
-    db.run('DELETE FROM trades', (err) => {
-      if (err) reject(err);
-      else db.run('DELETE FROM hourly_stats', (err) => {
+    db.serialize(() => {
+      // Dropar todas as tabelas
+      db.run('DROP TABLE IF EXISTS trades');
+      db.run('DROP TABLE IF EXISTS hourly_stats');
+      db.run('DROP TABLE IF EXISTS sequence_stats');
+
+      // Recriar as tabelas
+      db.run(`
+        CREATE TABLE trades (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          hour INTEGER NOT NULL,
+          is_win BOOLEAN NOT NULL,
+          stake REAL NOT NULL,
+          profit REAL NOT NULL,
+          balance_after REAL NOT NULL
+        )
+      `);
+
+      db.run(`
+        CREATE TABLE hourly_stats (
+          date TEXT NOT NULL,
+          hour INTEGER NOT NULL,
+          total_trades INTEGER DEFAULT 0,
+          wins INTEGER DEFAULT 0,
+          win_rate REAL DEFAULT 0,
+          total_profit REAL DEFAULT 0,
+          max_consecutive_wins INTEGER DEFAULT 0,
+          max_consecutive_losses INTEGER DEFAULT 0,
+          current_consecutive_wins INTEGER DEFAULT 0,
+          current_consecutive_losses INTEGER DEFAULT 0,
+          PRIMARY KEY (date, hour)
+        )
+      `);
+
+      db.run(`
+        CREATE TABLE sequence_stats (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          start_timestamp INTEGER NOT NULL,
+          end_timestamp INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          sequence_type TEXT NOT NULL,
+          trades_count INTEGER DEFAULT 0,
+          wins INTEGER DEFAULT 0,
+          win_rate REAL DEFAULT 0,
+          is_completed BOOLEAN DEFAULT 0,
+          reference_win_rate REAL,
+          completed_win_rate REAL
+        )
+      `, (err) => {
         if (err) reject(err);
         else resolve();
       });

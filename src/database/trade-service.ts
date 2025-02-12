@@ -318,30 +318,31 @@ export class TradeService {
     const currentWinRate = ((currentSequence.wins + (trade.isWin ? 1 : 0)) / 
       (currentSequence.trades_count + 1)) * 100;
 
-    const nextSequence = await this.getNextSequence();
-
     if (currentSequence.trades_count + 1 >= this.SEQUENCE_SIZE) {
-      if (currentWinRate < 80 && !nextSequence) {
+      if (currentWinRate < 80) {
+        await this.completeSequence(currentSequence.id, currentWinRate);
+        await this.createNewSequence('current', trade);
         await this.createNewSequence('next', trade, currentWinRate);
+      } else {
+        await this.completeSequence(currentSequence.id, currentWinRate);
+        await this.createNewSequence('current', trade);
       }
+      return;
     }
 
+    const nextSequence = await this.getNextSequence();
     if (nextSequence && nextSequence.reference_win_rate !== null) {
       if (currentWinRate < nextSequence.reference_win_rate) {
         await this.resetNextSequence(nextSequence.id);
         await this.createNewSequence('next', trade, currentWinRate);
       } else {
         await this.updateSequence(nextSequence, trade);
-
+        
         if (nextSequence.trades_count + 1 >= this.SEQUENCE_SIZE) {
           const nextWinRate = ((nextSequence.wins + (trade.isWin ? 1 : 0)) / 
             this.SEQUENCE_SIZE) * 100;
           
-          if (nextWinRate >= nextSequence.reference_win_rate) {
-            await this.completeSequence(nextSequence.id, nextWinRate);
-            await this.completeSequence(currentSequence.id, currentWinRate);
-            await this.createNewSequence('current', trade);
-          }
+          await this.completeSequence(nextSequence.id, nextWinRate);
         }
       }
     }
@@ -470,7 +471,7 @@ export class TradeService {
       this.db.run(`
         UPDATE sequence_stats 
         SET is_completed = 1,
-            win_rate = ?
+            completed_win_rate = ?
         WHERE id = ?
       `, [finalWinRate, sequenceId], (err) => {
         if (err) {
@@ -490,27 +491,37 @@ export class TradeService {
       winRate: number;
       isCompleted: boolean;
       referenceWinRate?: number;
+      completedWinRate?: number;
+      date: string;
     }>>((resolve) => {
       this.db.all(`
         SELECT 
-          s.*,
-          p.win_rate as previous_win_rate
-        FROM sequence_stats s
-        LEFT JOIN sequence_stats p ON s.reference_sequence_id = p.id
-        WHERE s.is_completed = 0
-        ORDER BY s.id DESC LIMIT 2
-      `, [], (err, rows: SequenceRow[]) => {
+          sequence_type,
+          trades_count,
+          wins,
+          win_rate,
+          is_completed,
+          reference_win_rate,
+          completed_win_rate,
+          date
+        FROM sequence_stats 
+        ORDER BY start_timestamp DESC, id DESC
+        LIMIT 10
+      `, [], (err, rows: any[]) => {
         if (err) {
           console.error('Erro ao buscar estatísticas de sequência:', err);
           resolve([]);
           return;
         }
+
         resolve(rows.map(row => ({
           type: row.sequence_type,
           tradesCount: row.trades_count,
           winRate: row.win_rate,
           isCompleted: Boolean(row.is_completed),
-          referenceWinRate: row.reference_win_rate || undefined
+          referenceWinRate: row.reference_win_rate,
+          completedWinRate: row.completed_win_rate,
+          date: row.date
         })));
       });
     });

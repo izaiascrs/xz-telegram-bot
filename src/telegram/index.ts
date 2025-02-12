@@ -221,18 +221,19 @@ export class TelegramManager {
       const sequences = await this.tradeService.getSequenceStats();
       
       if (sequences.length === 0) {
-        this.bot.sendMessage(msg.chat.id, '📊 Nenhuma sequência em andamento.');
+        this.bot.sendMessage(msg.chat.id, '📊 Nenhuma sequência encontrada.');
         return;
       }
 
-      let message = '*📊 Sequências em Andamento*\n\n';
+      let message = '*�� Sequências*\n\n';
       
       sequences.forEach(seq => {
-        message += `*${seq.type === 'current' ? 'Sequência Atual' : 'Próxima Sequência'}*\n` +
+        message += `*${seq.date} - ${seq.type === 'current' ? 'Principal' : 'Monitoramento'}*\n` +
+          `Status: ${seq.isCompleted ? '✅ Completa' : '🔄 Em andamento'}\n` +
           `Trades: ${seq.tradesCount}/25\n` +
-          `Taxa de Acerto Atual: ${seq.winRate.toFixed(2)}%\n` +
-          (seq.referenceWinRate ? 
-            `Taxa de Acerto Anterior: ${seq.referenceWinRate.toFixed(2)}%\n` : '') +
+          `Taxa Atual: ${seq.winRate.toFixed(2)}%\n` +
+          (seq.referenceWinRate ? `Taxa Referência: ${seq.referenceWinRate.toFixed(2)}%\n` : '') +
+          (seq.completedWinRate ? `Taxa Final: ${seq.completedWinRate.toFixed(2)}%\n` : '') +
           '\n';
       });
 

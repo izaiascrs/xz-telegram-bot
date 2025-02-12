@@ -44,7 +44,8 @@ export const initDatabase = () => {
         wins INTEGER DEFAULT 0,
         win_rate REAL DEFAULT 0,
         is_completed BOOLEAN DEFAULT 0,
-        reference_win_rate REAL -- taxa de acerto das 25 anteriores no momento do início
+        reference_win_rate REAL, -- taxa de acerto que iniciou a sequência
+        completed_win_rate REAL  -- taxa de acerto final quando completada
       )
     `);
   });
