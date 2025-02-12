@@ -143,23 +143,37 @@ export class TelegramManager {
       // Calcular totais do dia
       const totalTrades = stats.reduce((sum, s) => sum + s.totalTrades, 0);
       const totalWins = stats.reduce((sum, s) => sum + (s.totalTrades * s.winRate / 100), 0);
+      const totalLosses = totalTrades - Math.floor(totalWins);
       const totalWinRate = (totalWins / totalTrades) * 100;
       const totalProfit = stats.reduce((sum, s) => sum + s.totalProfit, 0);
+      
+      // Encontrar máximos do dia
+      const maxConsecutiveWins = Math.max(...stats.map(s => s.maxConsecutiveWins));
+      const maxConsecutiveLosses = Math.max(...stats.map(s => s.maxConsecutiveLosses));
       
       // Adicionar resumo do dia
       message += `*Resumo do Dia*\n` +
         `Total de Trades: ${totalTrades}\n` +
+        `Vitórias: ${Math.floor(totalWins)}\n` +
+        `Derrotas: ${totalLosses}\n` +
         `Taxa de Acerto: ${totalWinRate.toFixed(2)}%\n` +
-        `Lucro Total: $${totalProfit.toFixed(2)}\n\n` +
+        `Lucro Total: $${totalProfit.toFixed(2)}\n` +
+        `Máx. Wins Consecutivos: ${maxConsecutiveWins}\n` +
+        `Máx. Losses Consecutivos: ${maxConsecutiveLosses}\n\n` +
         `*Detalhes por Horário*\n`;
 
       stats.forEach(stat => {
         const formattedTime = this.formatBrazilianDateTime(stat.date, stat.hour);
+        const losses = stat.totalTrades - Math.floor((stat.totalTrades * stat.winRate) / 100);
         
         message += `\n*${formattedTime}*\n` +
           `Trades: ${stat.totalTrades}\n` +
+          `Wins: ${Math.floor((stat.totalTrades * stat.winRate) / 100)}\n` +
+          `Losses: ${losses}\n` +
           `Taxa: ${stat.winRate.toFixed(2)}%\n` +
-          `Lucro: $${stat.totalProfit.toFixed(2)}`;
+          `Lucro: $${stat.totalProfit.toFixed(2)}\n` +
+          `Máx. Wins: ${stat.maxConsecutiveWins}\n` +
+          `Máx. Losses: ${stat.maxConsecutiveLosses}`;
       });
 
       this.bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
