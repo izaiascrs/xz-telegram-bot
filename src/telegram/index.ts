@@ -111,30 +111,55 @@ export class TelegramManager {
       this.bot.sendMessage(msg.chat.id, status, { parse_mode: 'Markdown' });
     });
 
-    this.bot.onText(/\/stats(?:\s+(\d{4}-\d{2}-\d{2}))?/, async (msg, match) => {
+    this.bot.onText(/\/stats(?:\s+(\d{2}-\d{2}))?/, async (msg, match) => {
       if (!this.isAuthorizedChat(msg.chat.id)) return;
       
-      const date = match?.[1];
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      
+      let date: string | undefined;
+      if (match?.[1]) {
+        // Converter DD-MM para YYYY-MM-DD
+        const [day, month] = match[1].split('-');
+        date = `${currentYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      } else {
+        // Usar data atual
+        date = now.toISOString().split('T')[0];
+      }
+      
       const stats = await this.tradeService.getHourlyStats(date);
       
       if (stats.length === 0) {
-        this.bot.sendMessage(msg.chat.id, '📊 Nenhuma estatística disponível' + (date ? ' para esta data.' : '.'));
+        this.bot.sendMessage(msg.chat.id, 
+          '📊 Nenhuma estatística disponível' + 
+          (date ? ` para ${match?.[1]}` : ' para hoje') + '.');
         return;
       }
 
-      let message = date 
-        ? `*📊 Estatísticas do dia ${date}*\n\n`
-        : '*📊 Estatísticas Detalhadas*\n\n';
+      // Formatar a data para exibição (DD/MM)
+      const displayDate = date.split('-').reverse().slice(0, 2).join('/');
+      let message = `*📊 Estatísticas do dia ${displayDate}*\n\n`;
+      
+      // Calcular totais do dia
+      const totalTrades = stats.reduce((sum, s) => sum + s.totalTrades, 0);
+      const totalWins = stats.reduce((sum, s) => sum + (s.totalTrades * s.winRate / 100), 0);
+      const totalWinRate = (totalWins / totalTrades) * 100;
+      const totalProfit = stats.reduce((sum, s) => sum + s.totalProfit, 0);
+      
+      // Adicionar resumo do dia
+      message += `*Resumo do Dia*\n` +
+        `Total de Trades: ${totalTrades}\n` +
+        `Taxa de Acerto: ${totalWinRate.toFixed(2)}%\n` +
+        `Lucro Total: $${totalProfit.toFixed(2)}\n\n` +
+        `*Detalhes por Horário*\n`;
 
       stats.forEach(stat => {
         const formattedTime = this.formatBrazilianDateTime(stat.date, stat.hour);
         
-        message += `*${formattedTime}*\n` +
-          `Trades: ${stat.totalTrades || 0}\n` +
-          `Taxa de Acerto: ${stat.winRate?.toFixed(2) || '0.00'}%\n` +
-          `Lucro Total: $${(stat.totalProfit || 0).toFixed(2)}\n` +
-          `Máx. Wins Consecutivos: ${stat.maxConsecutiveWins || 0}\n` +
-          `Máx. Losses Consecutivos: ${stat.maxConsecutiveLosses || 0}\n\n`;
+        message += `\n*${formattedTime}*\n` +
+          `Trades: ${stat.totalTrades}\n` +
+          `Taxa: ${stat.winRate.toFixed(2)}%\n` +
+          `Lucro: $${stat.totalProfit.toFixed(2)}`;
       });
 
       this.bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
@@ -196,6 +221,42 @@ export class TelegramManager {
             `Taxa de Acerto Anterior: ${seq.referenceWinRate.toFixed(2)}%\n` : '') +
           '\n';
       });
+
+      this.bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
+    });
+
+    this.bot.onText(/\/compare(?:\s+(\d{1,2}))?/, async (msg, match) => {
+      if (!this.isAuthorizedChat(msg.chat.id)) return;
+      
+      const targetHour = match?.[1] ? parseInt(match[1]) : new Date().getHours();
+      const stats = await this.tradeService.getComparisonStats(targetHour);
+      
+      if (stats.length === 0) {
+        this.bot.sendMessage(msg.chat.id, 
+          `📊 Nenhuma estatística disponível para o horário ${targetHour}:00-${targetHour + 2}:00`);
+        return;
+      }
+
+      let message = `*📊 Comparação de Horários: ${targetHour}:00-${targetHour + 2}:00*\n\n`;
+      
+      stats.forEach(stat => {
+        message += `*${stat.date}*\n` +
+          `Trades: ${stat.totalTrades}\n` +
+          `Taxa de Acerto: ${stat.winRate.toFixed(2)}%\n` +
+          `Lucro Total: $${stat.totalProfit.toFixed(2)}\n` +
+          `Máx. Wins Consecutivos: ${stat.maxConsecutiveWins}\n` +
+          `Máx. Losses Consecutivos: ${stat.maxConsecutiveLosses}\n\n`;
+      });
+
+      // Adicionar média geral
+      const avgWinRate = stats.reduce((sum, s) => sum + s.winRate, 0) / stats.length;
+      const avgProfit = stats.reduce((sum, s) => sum + s.totalProfit, 0) / stats.length;
+      const totalTrades = stats.reduce((sum, s) => sum + s.totalTrades, 0);
+      
+      message += `*Média Geral*\n` +
+        `Total de Trades: ${totalTrades}\n` +
+        `Taxa Média: ${avgWinRate.toFixed(2)}%\n` +
+        `Lucro Médio: $${avgProfit.toFixed(2)}\n`;
 
       this.bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
     });

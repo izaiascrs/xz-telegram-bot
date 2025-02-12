@@ -189,11 +189,19 @@ export class TradeService {
       maxConsecutiveWins: number;
       maxConsecutiveLosses: number;
     }>>((resolve) => {
+      const now = new Date();
+      const currentDate = now.toISOString().split('T')[0];
+      const currentHour = Math.floor(now.getUTCHours() / 2) * 2;
+
       const query = date 
         ? `SELECT * FROM hourly_stats WHERE date = ? ORDER BY hour ASC`
-        : `SELECT * FROM hourly_stats ORDER BY date DESC, hour ASC`;
+        : `
+          SELECT * FROM hourly_stats 
+          WHERE (date < ? OR (date = ? AND hour <= ?)) 
+          ORDER BY date DESC, hour ASC
+        `;
       
-      const params = date ? [date] : [];
+      const params = date ? [date] : [currentDate, currentDate, currentHour];
 
       this.db.all(query, params, (err, rows: any[]) => {
         if (err) {
@@ -503,6 +511,43 @@ export class TradeService {
           winRate: row.win_rate,
           isCompleted: Boolean(row.is_completed),
           referenceWinRate: row.reference_win_rate || undefined
+        })));
+      });
+    });
+  }
+
+  async getComparisonStats(targetHour: number) {
+    return new Promise<Array<{
+      date: string;
+      hour: number;
+      totalTrades: number;
+      winRate: number;
+      totalProfit: number;
+      maxConsecutiveWins: number;
+      maxConsecutiveLosses: number;
+    }>>((resolve) => {
+      // Ajusta para hora par mais próxima
+      const hour = Math.floor(targetHour / 2) * 2;
+      
+      this.db.all(`
+        SELECT * FROM hourly_stats 
+        WHERE hour = ?
+        ORDER BY date DESC
+        LIMIT 7  -- últimos 7 dias
+      `, [hour], (err, rows: any[]) => {
+        if (err) {
+          console.error('Erro ao buscar estatísticas comparativas:', err);
+          resolve([]);
+          return;
+        }
+        resolve(rows.map(row => ({
+          date: row.date,
+          hour: row.hour,
+          totalTrades: row.total_trades || 0,
+          winRate: row.win_rate || 0,
+          totalProfit: Number(row.total_profit || 0),
+          maxConsecutiveWins: row.max_consecutive_wins || 0,
+          maxConsecutiveLosses: row.max_consecutive_losses || 0
         })));
       });
     });
