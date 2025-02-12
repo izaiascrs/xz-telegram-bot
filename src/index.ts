@@ -2,7 +2,7 @@ import "dotenv/config";
 import { RealMoneyManager } from "./money-management";
 import { MoneyManagement } from "./money-management/types";
 import apiManager from "./ws";
-import { TicksStreamResponse } from "@deriv/api-types";
+import { ContractStatus, TicksStreamResponse } from "@deriv/api-types";
 import { DERIV_TOKEN } from "./utils/constants";
 import { TelegramManager } from "./telegram";
 import { TradeService } from "./database/trade-service";
@@ -12,6 +12,8 @@ type TSymbol = (typeof symbols)[number];
 const symbols = ["R_10"] as const;
 
 const BALANCE_TO_START_TRADING = 10_000;
+const CONTRACT_SECONDS = 2;
+const CONTRACT_TICKS = 8;
 
 const config: MoneyManagement = {
   type: "fixed",
@@ -31,6 +33,8 @@ let isTrading = false;
 let waitingVirtualLoss = false;
 let tickCount = 0;
 let consecutiveWins = 0;
+let lastContractId: number | undefined = undefined;
+let lastContractIntervalId: NodeJS.Timeout | null = null;
 
 let subscriptions: {
   ticks?: any;
@@ -47,6 +51,89 @@ const telegramManager = new TelegramManager(tradeService);
 const moneyManager = new RealMoneyManager(config, BALANCE_TO_START_TRADING);
 
 const ticksMap = new Map<TSymbol, number[]>([]);
+
+function createTradeTimeout() {
+  lastContractIntervalId = setInterval(() => {
+    if(lastContractId) {
+      getLastTradeResult(lastContractId);
+    }
+  }, ((CONTRACT_TICKS * CONTRACT_SECONDS) * 1000) * 2);
+}
+
+function clearTradeTimeout() {
+  if(lastContractIntervalId) {
+    clearInterval(lastContractIntervalId);
+    lastContractIntervalId = null;
+  }
+}
+
+function handleTradeResult({
+  profit,
+  stake,
+  status
+}: {
+  profit: number;
+  stake: number;
+  status: ContractStatus;
+}) {
+
+  if(status === "open") return;
+  updateActivityTimestamp();
+  const isWin = status === "won";
+  
+  // Calcular novo saldo baseado no resultado
+  const currentBalance = moneyManager.getCurrentBalance();
+  let newBalance = currentBalance;
+
+  isTrading = false;
+  tickCount = 0;
+  lastContractId = undefined;
+  waitingVirtualLoss = false;
+  
+  if (isWin) {
+    newBalance = currentBalance + profit;
+    consecutiveWins++;
+  } else {
+    newBalance = currentBalance - stake;
+    consecutiveWins = 0;
+  }
+  
+  moneyManager.updateBalance(Number(newBalance.toFixed(2)));
+  moneyManager.updateLastTrade(isWin, stake);
+  telegramManager.updateTradeResult(isWin, moneyManager.getCurrentBalance());
+
+  const resultMessage = isWin ? "✅ Trade ganho!" : "❌ Trade perdido!";
+  telegramManager.sendMessage(
+    `${resultMessage}\n` +
+    `💰 ${isWin ? 'Lucro' : 'Prejuízo'}: $${isWin ? profit : stake}\n` +
+    `💵 Saldo: $${moneyManager.getCurrentBalance().toFixed(2)}`
+  );  
+
+  // Salvar trade no banco
+  tradeService.saveTrade({
+    isWin,
+    stake,
+    profit: isWin ? profit : -stake,
+    balanceAfter: newBalance
+  }).catch(err => console.error('Erro ao salvar trade:', err));
+
+  clearTradeTimeout();
+}
+
+async function getLastTradeResult(contractId: number | undefined) {
+  if(!contractId) return;
+
+  const data = await apiManager.augmentedSend('proposal_open_contract', { contract_id: contractId })
+  const contract = data.proposal_open_contract;
+  const profit = contract?.profit ?? 0;
+  const stake = contract?.buy_price ?? 0;
+  const status = contract?.status;
+  handleTradeResult({
+    profit,
+    stake,
+    status: status ?? "open"
+  });
+}
 
 const checkStakeAndBalance = (stake: number) => {
   if (stake < 0.35 || moneyManager.getCurrentBalance() < 0.35) {
@@ -189,16 +276,6 @@ const subscribeToTicks = (symbol: TSymbol) => {
         updateActivityTimestamp(); // Atualizar timestamp ao identificar sinal
         if (!waitingVirtualLoss) {
           let amount = moneyManager.calculateNextStake();
-          // const loss = +moneyManager.getCurrentBalance().toFixed(2) - 100;
-
-          // if (loss < 0 && consecutiveWins === 3) {
-          //   amount = calculateRecoveryStake(Math.abs(loss), 22);
-          //   amount = +amount.toFixed(2);
-          //   if (amount < 0.35 && moneyManager.getCurrentBalance() >= 0.35) {
-          //     amount = 0.35;
-          //   }
-          //   moneyManager.setStake(amount);
-          // }
 
           if (!checkStakeAndBalance(amount)) {
             return;
@@ -216,13 +293,17 @@ const subscribeToTicks = (symbol: TSymbol) => {
               symbol,
               currency: "USD",
               basis: "stake",
-              duration: 8,
+              duration: CONTRACT_TICKS,
               duration_unit: "t",
               amount: Number(amount.toFixed(2)),
               contract_type: "DIGITOVER",
               barrier: "1",
             },
-          })
+          }).then(async (data) => {
+            const contractId = data.buy?.contract_id;
+            lastContractId = contractId;
+            createTradeTimeout();
+          });
         } else {
           telegramManager.sendMessage(
             "⏳ Aguardando confirmação de loss virtual"
@@ -258,51 +339,12 @@ const subscribeToOpenOrders = () => {
     const profit = contract?.profit ?? 0;
     const stake = contract?.buy_price || 0;
 
-    if (!contract || !status) return;
+    handleTradeResult({
+      profit,
+      stake,
+      status: status ?? "open"
+    });
 
-    if (status !== "open") {
-      updateActivityTimestamp();
-      const isWin = status === "won";
-      
-      // Calcular novo saldo baseado no resultado
-      const currentBalance = moneyManager.getCurrentBalance();
-      let newBalance = currentBalance;
-      
-      if (isWin) {
-        newBalance = currentBalance + profit;
-      } else {
-        newBalance = currentBalance - stake;
-      }
-      
-      moneyManager.updateBalance(Number(newBalance.toFixed(2)));
-      moneyManager.updateLastTrade(isWin, stake);
-      telegramManager.updateTradeResult(isWin, moneyManager.getCurrentBalance());
-
-      const resultMessage = isWin ? "✅ Trade ganho!" : "❌ Trade perdido!";
-      telegramManager.sendMessage(
-        `${resultMessage}\n` +
-        `💰 ${isWin ? 'Lucro' : 'Prejuízo'}: $${isWin ? profit : stake}\n` +
-        `💵 Saldo: $${moneyManager.getCurrentBalance().toFixed(2)}`
-      );
-
-      isTrading = false;
-      tickCount = 0;
-      // waitingVirtualLoss = !isWin;
-
-      if (isWin) {
-        consecutiveWins++;
-      } else {
-        consecutiveWins = 0;
-      }
-
-      // Salvar trade no banco
-      tradeService.saveTrade({
-        isWin,
-        stake,
-        profit: isWin ? profit : -stake,
-        balanceAfter: newBalance
-      }).catch(err => console.error('Erro ao salvar trade:', err));
-    }
   });
 
   activeSubscriptions.push(subscription);
@@ -327,7 +369,7 @@ setInterval(() => {
   if (telegramManager.isRunningBot() && !isTrading && !waitingVirtualLoss) {
     // Verificar se o bot está "travado"
     const lastActivity = Date.now() - lastActivityTimestamp;
-    if (lastActivity > 180_000) { // 180 segundos sem atividade
+    if (lastActivity > 60000) { // 60 segundos sem atividade
       console.log("Detectado possível travamento do bot, resetando estados...");
       isTrading = false;
       waitingVirtualLoss = false;

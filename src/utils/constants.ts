@@ -13,3 +13,5 @@ export const ALLOWED_CHAT_IDS = (process.env.ALLOWED_CHAT_IDS || '')
   .map(id => Number(id));
 
 export const ADMIN_CHAT_ID = Number(process.env.ADMIN_CHAT_ID || '0');
+
+export const TRADES_TO_MONITOR = 25;

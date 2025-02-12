@@ -1,5 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { TELEGRAM_TOKEN, ALLOWED_CHAT_IDS, ADMIN_CHAT_ID } from '../utils/constants';
+import { TELEGRAM_TOKEN, ALLOWED_CHAT_IDS, ADMIN_CHAT_ID, TRADES_TO_MONITOR } from '../utils/constants';
 import { TradeService } from '../database/trade-service';
 
 export class TelegramManager {
@@ -230,7 +230,7 @@ export class TelegramManager {
       sequences.forEach(seq => {
         message += `*${seq.date} - ${seq.type === 'current' ? 'Principal' : 'Monitoramento'}*\n` +
           `Status: ${seq.isCompleted ? '✅ Completa' : '🔄 Em andamento'}\n` +
-          `Trades: ${seq.tradesCount}/25\n` +
+          `Trades: ${seq.tradesCount}/${TRADES_TO_MONITOR}\n` +
           `Taxa Atual: ${seq.winRate.toFixed(2)}%\n` +
           (seq.referenceWinRate ? `Taxa Referência: ${seq.referenceWinRate.toFixed(2)}%\n` : '') +
           (seq.completedWinRate ? `Taxa Final: ${seq.completedWinRate.toFixed(2)}%\n` : '') +

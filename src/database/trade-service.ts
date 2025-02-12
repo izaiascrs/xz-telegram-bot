@@ -1,4 +1,5 @@
 import { Database } from 'sqlite3';
+import { TRADES_TO_MONITOR } from '../utils/constants';
 
 interface TradeData {
   isWin: boolean;
@@ -17,7 +18,7 @@ interface SequenceRow {
 }
 
 export class TradeService {
-  private readonly SEQUENCE_SIZE = 25;
+  private readonly SEQUENCE_SIZE = TRADES_TO_MONITOR;
 
   constructor(private db: Database) {}
 
