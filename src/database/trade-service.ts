@@ -43,11 +43,12 @@ export class TradeService {
     balanceAfter: number;
   }) {
     const now = new Date();
-    // Salvar em UTC
-    const utcDate = now.toISOString().split('T')[0];
-    const utcHour = now.getUTCHours();
+    // Ajusta para UTC-3 (Brasil)
+    const brazilTime = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+    const date = brazilTime.toISOString().split('T')[0];
+    const hour = brazilTime.getHours();
     // Garante que a hora seja sempre par
-    const hourInterval = Math.floor(utcHour / 2) * 2;
+    const hourInterval = Math.floor(hour / 2) * 2;
 
     return new Promise<void>((resolve, reject) => {
       this.db.run(`
@@ -55,7 +56,7 @@ export class TradeService {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [
         Date.now(),
-        utcDate,
+        date,
         hourInterval,
         trade.isWin ? 1 : 0,
         trade.stake,
@@ -67,11 +68,11 @@ export class TradeService {
           reject(err);
           return;
         }
-        await this.updateHourlyStats(utcDate, hourInterval);
+        await this.updateHourlyStats(date, hourInterval);
         await this.updateSequenceStats({
           isWin: trade.isWin,
           timestamp: Date.now(),
-          date: utcDate
+          date
         });
         resolve();
       });
@@ -192,8 +193,10 @@ export class TradeService {
       maxConsecutiveLosses: number;
     }>>((resolve) => {
       const now = new Date();
-      const currentDate = now.toISOString().split('T')[0];
-      const currentHour = now.getUTCHours();
+      // Ajusta para UTC-3 (Brasil)
+      const brazilTime = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+      const currentDate = brazilTime.toISOString().split('T')[0];
+      const currentHour = brazilTime.getHours();
       const currentInterval = Math.floor(currentHour / 2) * 2;
 
       const query = date 

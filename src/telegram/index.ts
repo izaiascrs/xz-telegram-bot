@@ -337,10 +337,8 @@ export class TelegramManager {
   }
 
   private formatBrazilianDateTime(date: string, hour: number, showDate: boolean = true): string {
-    // Converte de GMT 0 para GMT-3
-    const brazilHour = (hour - 3 + 24) % 24;
-    // Garante que a hora inicial seja par
-    const startHour = Math.floor(brazilHour / 2) * 2;
+    // A hora já está em GMT-3, não precisa converter
+    const startHour = Math.floor(hour / 2) * 2;
     const endHour = (startHour + 2) % 24;
     
     const formattedStartHour = startHour.toString().padStart(2, '0');
