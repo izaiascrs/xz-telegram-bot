@@ -1,13 +1,18 @@
 export type ManagementType = 'fixed' | 'martingale' | 'soros' | 'martingale-soros';
 
-export interface MoneyManagement {
-  type: ManagementType;
+export type MoneyManagement = {
+  type: "fixed" | "martingale-soros" | "fixed-with-recovery";
   initialStake: number;
-  profitPercent: number; // Exemplo: 95 para 95%
-  maxStake?: number; // Limite máximo de entrada
-  maxLoss?: number; // Limite máximo de loss consecutivo (para martingale)
-  sorosLevel?: number; // Quantos níveis de soros aplicar
-}
+  profitPercent: number;
+  maxStake: number;
+  maxLoss: number;
+  sorosLevel: number;
+  // Campos para o fixed-with-recovery
+  enableSoros: boolean;
+  sorosPercent: number;
+  winsBeforeRecovery: number;
+  initialBalance: number;
+};
 
 export interface TradeResult {
   success: boolean;

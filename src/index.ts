@@ -4,26 +4,32 @@ import { MoneyManagement } from "./money-management/types";
 import apiManager from "./ws";
 import { TicksStreamResponse } from "@deriv/api-types";
 import { DERIV_TOKEN } from "./utils/constants";
-import { TelegramManager } from './telegram';
+import { TelegramManager } from "./telegram";
+import { TradeService } from "./database/trade-service";
+import { initDatabase } from "./database/schema";
 
 type TSymbol = (typeof symbols)[number];
 const symbols = ["R_10"] as const;
+
+const BALANCE_TO_START_TRADING = 10_000;
 
 const config: MoneyManagement = {
   type: "fixed",
   initialStake: 0.35,
   profitPercent: 22,
   maxStake: 200,
-  maxLoss: 5000,
-  sorosLevel: 5,
+  maxLoss: 10_000,
+  sorosLevel: 3,
+  enableSoros: true,
+  sorosPercent: 50,
+  winsBeforeRecovery: 3,
+  initialBalance: BALANCE_TO_START_TRADING
 };
 
 let isAuthorized = false;
 let isTrading = false;
 let waitingVirtualLoss = false;
 let tickCount = 0;
-let activeSymbolSubscription: any = null;
-let activeContractSubscription: any = null;
 let consecutiveWins = 0;
 
 let subscriptions: {
@@ -31,24 +37,24 @@ let subscriptions: {
   contracts?: any;
 } = {};
 
-const moneyManager = new RealMoneyManager(config, 100);
-const telegramManager = new TelegramManager();
+// Adicionar um array para controlar todas as subscrições ativas
+let activeSubscriptions: any[] = [];
+
+// Inicializar o banco de dados
+const database = initDatabase();
+const tradeService = new TradeService(database);
+const telegramManager = new TelegramManager(tradeService);
+const moneyManager = new RealMoneyManager(config, BALANCE_TO_START_TRADING);
 
 const ticksMap = new Map<TSymbol, number[]>([]);
 
-function calcularStakeRecuperacao(valorRecuperar: number, pagamentoPercentual: number): number {
-    if (pagamentoPercentual <= 0) {
-        throw new Error("O pagamento percentual deve ser maior que 0.");
-    }
-    return valorRecuperar * 100 / pagamentoPercentual;
-}
-
 const checkStakeAndBalance = (stake: number) => {
-  if (stake < 0.35 || moneyManager.getCurrentBalance() < 0.35) { // moneyManager.getCurrentBalance() <= 0
-    telegramManager.sendMessage('🚨 *ALERTA CRÍTICO*\n\n' +
-      '❌ Bot finalizado automaticamente!\n' +
-      '💰 Saldo ou stake chegou a zero\n' +
-      `💵 Saldo final: $${moneyManager.getCurrentBalance().toFixed(2)}`
+  if (stake < 0.35 || moneyManager.getCurrentBalance() < 0.35) {
+    telegramManager.sendMessage(
+      "🚨 *ALERTA CRÍTICO*\n\n" +
+        "❌ Bot finalizado automaticamente!\n" +
+        "💰 Saldo ou stake chegou a zero\n" +
+        `💵 Saldo final: $${moneyManager.getCurrentBalance().toFixed(2)}`
     );
     stopBot();
     return false;
@@ -57,37 +63,37 @@ const checkStakeAndBalance = (stake: number) => {
 };
 
 const clearSubscriptions = async () => {
-  // Limpar todas as subscrições existentes
-  if (subscriptions.ticks) {
-    try {
-      await subscriptions.ticks.complete();
-      subscriptions.ticks.unsubscribe();
-    } catch (error) {
-      console.error('Erro ao limpar subscrição de ticks:', error);
+  try {
+    // Limpar todas as subscrições ativas
+    for (const subscription of activeSubscriptions) {
+      if (subscription) {
+        try {
+          subscription.unsubscribe();
+        } catch (error) {
+          console.error("Erro ao limpar subscrição:", error);
+        }
+      }
     }
-  }
+    
+    // Limpar array de subscrições
+    activeSubscriptions = [];
+    
+    // Limpar objeto de subscrições
+    subscriptions = {};
 
-  if (subscriptions.contracts) {
-    try {
-      await subscriptions.contracts.complete();
-      subscriptions.contracts.unsubscribe();
-    } catch (error) {
-      console.error('Erro ao limpar subscrição de contratos:', error);
-    }
+    // Resetar todos os estados
+    isTrading = false;
+    waitingVirtualLoss = false;
+    tickCount = 0;
+    ticksMap.clear();
+    
+  } catch (error) {
+    console.error("Erro ao limpar subscrições:", error);
   }
-
-  // Resetar objeto de subscrições
-  subscriptions = {};
-  
-  // Resetar estado do bot
-  isTrading = false;
-  waitingVirtualLoss = false;
-  tickCount = 0;
-  ticksMap.clear();
 };
 
 const startBot = async () => {
-  // Garantir que todas as subscrições antigas sejam limpas
+  updateActivityTimestamp(); // Atualizar timestamp ao iniciar o bot
   await clearSubscriptions();
 
   if (!isAuthorized) {
@@ -95,19 +101,25 @@ const startBot = async () => {
   }
 
   try {
-    // Criar novas subscrições
     subscriptions.ticks = subscribeToTicks("R_10");
     subscriptions.contracts = subscribeToOpenOrders();
-    telegramManager.sendMessage('🤖 Bot iniciado e conectado aos serviços Deriv');
+    
+    if (!subscriptions.ticks || !subscriptions.contracts) {
+      throw new Error("Falha ao criar subscrições");
+    }
+
+    telegramManager.sendMessage("🤖 Bot iniciado e conectado aos serviços Deriv");
   } catch (error) {
-    telegramManager.sendMessage('❌ Erro ao iniciar o bot. Tentando parar e limpar as conexões...');
+    console.error("Erro ao iniciar bot:", error);
+    telegramManager.sendMessage("❌ Erro ao iniciar o bot. Tentando parar e limpar as conexões...");
     await stopBot();
   }
 };
 
 const stopBot = async () => {
+  updateActivityTimestamp(); // Atualizar timestamp ao parar o bot
   await clearSubscriptions();
-  telegramManager.sendMessage('🛑 Bot parado e desconectado dos serviços Deriv');
+  telegramManager.sendMessage("🛑 Bot parado e desconectado dos serviços Deriv");
 };
 
 const subscribeToTicks = (symbol: TSymbol) => {
@@ -118,8 +130,14 @@ const subscribeToTicks = (symbol: TSymbol) => {
   });
 
   const subscription = ticksStream.subscribe((data) => {
+    updateActivityTimestamp(); // Atualizar timestamp ao receber ticks
+
     if (!telegramManager.isRunningBot()) {
       subscription.unsubscribe();
+      const index = activeSubscriptions.indexOf(subscription);
+      if (index > -1) {
+        activeSubscriptions.splice(index, 1);
+      }
       return;
     }
 
@@ -154,11 +172,12 @@ const subscribeToTicks = (symbol: TSymbol) => {
       if (waitingVirtualLoss) {
         tickCount++;
         if (tickCount === 8) {
+          updateActivityTimestamp(); // Atualizar timestamp ao processar loss virtual
           const isWin = lastTick > 1;
 
           if (!isWin) {
             waitingVirtualLoss = false;
-            telegramManager.sendMessage('⚠️ Loss virtual confirmado');
+            telegramManager.sendMessage("⚠️ Loss virtual confirmado");
           }
 
           isTrading = false;
@@ -167,26 +186,27 @@ const subscribeToTicks = (symbol: TSymbol) => {
       }
     } else {
       if (lastTick === 3) {
+        updateActivityTimestamp(); // Atualizar timestamp ao identificar sinal
         if (!waitingVirtualLoss) {
           let amount = moneyManager.calculateNextStake();
-          const loss = +(moneyManager.getCurrentBalance().toFixed(2)) - 100;
-          
-          if(loss < 0 && consecutiveWins === 3){
-            amount = calcularStakeRecuperacao(Math.abs(loss), 22);
-            amount = +(amount.toFixed(2));
-            if(amount < 0.35 && moneyManager.getCurrentBalance() >= 0.35) {
-              amount = 0.35;
-            }
-            moneyManager.setStake(amount);
-          }
-          
+          // const loss = +moneyManager.getCurrentBalance().toFixed(2) - 100;
+
+          // if (loss < 0 && consecutiveWins === 3) {
+          //   amount = calculateRecoveryStake(Math.abs(loss), 22);
+          //   amount = +amount.toFixed(2);
+          //   if (amount < 0.35 && moneyManager.getCurrentBalance() >= 0.35) {
+          //     amount = 0.35;
+          //   }
+          //   moneyManager.setStake(amount);
+          // }
+
           if (!checkStakeAndBalance(amount)) {
             return;
           }
 
           telegramManager.sendMessage(
             `🎯 Sinal identificado!\n` +
-            `💰 Valor da entrada: $${amount.toFixed(2)}`
+              `💰 Valor da entrada: $${amount.toFixed(2)}`
           );
 
           apiManager.augmentedSend("buy", {
@@ -202,9 +222,11 @@ const subscribeToTicks = (symbol: TSymbol) => {
               contract_type: "DIGITOVER",
               barrier: "1",
             },
-          });
+          })
         } else {
-          telegramManager.sendMessage('⏳ Aguardando confirmação de loss virtual');
+          telegramManager.sendMessage(
+            "⏳ Aguardando confirmação de loss virtual"
+          );
         }
         isTrading = true;
         tickCount = 0;
@@ -212,48 +234,78 @@ const subscribeToTicks = (symbol: TSymbol) => {
     }
   });
 
+  activeSubscriptions.push(subscription);
   return ticksStream;
 };
 
 const subscribeToOpenOrders = () => {
   const contractSub = apiManager.augmentedSubscribe("proposal_open_contract");
+  
   const subscription = contractSub.subscribe((data) => {
+    updateActivityTimestamp();
+
     if (!telegramManager.isRunningBot()) {
       subscription.unsubscribe();
+      const index = activeSubscriptions.indexOf(subscription);
+      if (index > -1) {
+        activeSubscriptions.splice(index, 1);
+      }
       return;
     }
+
     const contract = data.proposal_open_contract;
     const status = contract?.status;
-    const profit = contract?.profit;
-    if (status && status !== "open") {
+    const profit = contract?.profit ?? 0;
+    const stake = contract?.buy_price || 0;
+
+    if (!contract || !status) return;
+
+    if (status !== "open") {
+      updateActivityTimestamp();
       const isWin = status === "won";
-      moneyManager.updateLastTrade(isWin);
       
+      // Calcular novo saldo baseado no resultado
+      const currentBalance = moneyManager.getCurrentBalance();
+      let newBalance = currentBalance;
+      
+      if (isWin) {
+        newBalance = currentBalance + profit;
+      } else {
+        newBalance = currentBalance - stake;
+      }
+      
+      moneyManager.updateBalance(Number(newBalance.toFixed(2)));
+      moneyManager.updateLastTrade(isWin, stake);
       telegramManager.updateTradeResult(isWin, moneyManager.getCurrentBalance());
-      
-      const resultMessage = isWin ? 
-        '✅ Trade ganho!' : 
-        '❌ Trade perdido!';
+
+      const resultMessage = isWin ? "✅ Trade ganho!" : "❌ Trade perdido!";
       telegramManager.sendMessage(
         `${resultMessage}\n` +
-        `💰 Lucro: $${profit}\n` +
+        `💰 ${isWin ? 'Lucro' : 'Prejuízo'}: $${isWin ? profit : stake}\n` +
         `💵 Saldo: $${moneyManager.getCurrentBalance().toFixed(2)}`
       );
 
       isTrading = false;
+      tickCount = 0;
+      // waitingVirtualLoss = !isWin;
 
-      if(isWin) {
+      if (isWin) {
         consecutiveWins++;
-      }
-      
-      if (!isWin) {
+      } else {
         consecutiveWins = 0;
-        // waitingVirtualLoss = true;
-        // telegramManager.sendMessage('🔄 Ativando verificação de loss virtual');
       }
+
+      // Salvar trade no banco
+      tradeService.saveTrade({
+        isWin,
+        stake,
+        profit: isWin ? profit : -stake,
+        balanceAfter: newBalance
+      }).catch(err => console.error('Erro ao salvar trade:', err));
     }
   });
 
+  activeSubscriptions.push(subscription);
   return contractSub;
 };
 
@@ -261,32 +313,58 @@ const authorize = async () => {
   try {
     await apiManager.authorize(DERIV_TOKEN);
     isAuthorized = true;
-    telegramManager.sendMessage('🔐 Bot autorizado com sucesso na Deriv');
+    telegramManager.sendMessage("🔐 Bot autorizado com sucesso na Deriv");
     return true;
   } catch (err) {
     isAuthorized = false;
-    telegramManager.sendMessage('❌ Erro ao autorizar bot na Deriv');
+    telegramManager.sendMessage("❌ Erro ao autorizar bot na Deriv");
     return false;
   }
 };
 
+// Adicionar verificação periódica do estado do bot
+setInterval(() => {
+  if (telegramManager.isRunningBot() && !isTrading && !waitingVirtualLoss) {
+    // Verificar se o bot está "travado"
+    const lastActivity = Date.now() - lastActivityTimestamp;
+    if (lastActivity > 180_000) { // 180 segundos sem atividade
+      console.log("Detectado possível travamento do bot, resetando estados...");
+      isTrading = false;
+      waitingVirtualLoss = false;
+      tickCount = 0;
+      lastActivityTimestamp = Date.now();
+    }
+  }
+}, 10000);
+
+// Adicionar timestamp da última atividade
+let lastActivityTimestamp = Date.now();
+
+// Atualizar o timestamp em momentos importantes
+const updateActivityTimestamp = () => {
+  lastActivityTimestamp = Date.now();
+};
+
 function main() {
   apiManager.connection.addEventListener("open", async () => {
-    telegramManager.sendMessage('🌐 Conexão WebSocket estabelecida');
+    telegramManager.sendMessage("🌐 Conexão WebSocket estabelecida");
     authorize();
   });
 
   apiManager.connection.addEventListener("close", async () => {
     isAuthorized = false;
     await clearSubscriptions();
-    telegramManager.sendMessage('⚠️ Conexão WebSocket fechada');
+    telegramManager.sendMessage("⚠️ Conexão WebSocket fechada");
   });
 
   // Observadores do estado do bot do Telegram
   setInterval(async () => {
     if (telegramManager.isRunningBot() && !subscriptions.ticks) {
       await startBot();
-    } else if (!telegramManager.isRunningBot() && (subscriptions.ticks || subscriptions.contracts)) {
+    } else if (
+      !telegramManager.isRunningBot() &&
+      (subscriptions.ticks || subscriptions.contracts)
+    ) {
       await stopBot();
     }
   }, 1000);

@@ -11,3 +11,5 @@ export const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '';
 export const ALLOWED_CHAT_IDS = (process.env.ALLOWED_CHAT_IDS || '')
   .split(',')
   .map(id => Number(id));
+
+export const ADMIN_CHAT_ID = Number(process.env.ADMIN_CHAT_ID || '0');
