@@ -42,9 +42,10 @@ export class TradeService {
     balanceAfter: number;
   }) {
     const now = new Date();
-    const date = this.getLocalDate(now);
-    const currentHour = this.getLocalHour(now);
-    const hour = Math.floor(currentHour / 2) * 2;
+    const date = now.toISOString().split('T')[0];
+    const hour = now.getUTCHours();
+    // Garante que a hora seja sempre par
+    const hourInterval = Math.floor(hour / 2) * 2;
 
     return new Promise<void>((resolve, reject) => {
       this.db.run(`
@@ -53,7 +54,7 @@ export class TradeService {
       `, [
         Date.now(),
         date,
-        hour,
+        hourInterval,
         trade.isWin ? 1 : 0,
         trade.stake,
         trade.profit,
@@ -64,7 +65,7 @@ export class TradeService {
           reject(err);
           return;
         }
-        await this.updateHourlyStats(date, hour);
+        await this.updateHourlyStats(date, hourInterval);
         await this.updateSequenceStats({
           isWin: trade.isWin,
           timestamp: Date.now(),

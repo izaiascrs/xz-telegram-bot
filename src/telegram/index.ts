@@ -127,11 +127,9 @@ export class TelegramManager {
         : '*📊 Estatísticas Detalhadas*\n\n';
 
       stats.forEach(stat => {
-        const hourEnd = stat.hour + 2;
-        const startTime = this.formatBrazilianDateTime(stat.date, stat.hour, true);
-        const endTime = this.formatBrazilianDateTime(stat.date, hourEnd, false);
+        const formattedTime = this.formatBrazilianDateTime(stat.date, stat.hour);
         
-        message += `*${startTime}-${endTime}*\n` +
+        message += `*${formattedTime}*\n` +
           `Trades: ${stat.totalTrades || 0}\n` +
           `Taxa de Acerto: ${stat.winRate?.toFixed(2) || '0.00'}%\n` +
           `Lucro Total: $${(stat.totalProfit || 0).toFixed(2)}\n` +
@@ -263,11 +261,17 @@ export class TelegramManager {
   }
 
   private formatBrazilianDateTime(date: string, hour: number, showDate: boolean = true): string {
-    // Ajusta do horário da Alemanha (UTC+1) para Brasil (UTC-3)
-    // Diferença total de 4 horas
-    const brazilHour = (hour - 4 + 24) % 24;
+    // Converte de GMT 0 para GMT-3
+    const brazilHour = (hour - 3 + 24) % 24;
+    // Garante que a hora inicial seja par
+    const startHour = Math.floor(brazilHour / 2) * 2;
+    const endHour = startHour + 2;
+    
+    const formattedStartHour = startHour.toString().padStart(2, '0');
+    const formattedEndHour = endHour.toString().padStart(2, '0');
+    
     return showDate ? 
-      `${date} ${brazilHour.toString().padStart(2, '0')}:00` : 
-      `${brazilHour.toString().padStart(2, '0')}:00`;
+      `${date} ${formattedStartHour}:00-${formattedEndHour}:00` : 
+      `${formattedStartHour}:00-${formattedEndHour}:00`;
   }
 } 
