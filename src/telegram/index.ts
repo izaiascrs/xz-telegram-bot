@@ -114,7 +114,7 @@ export class TelegramManager {
     this.bot.onText(/\/stats(?:\s+(\d{4}-\d{2}-\d{2}))?/, async (msg, match) => {
       if (!this.isAuthorizedChat(msg.chat.id)) return;
       
-      const date = match?.[1]; // Formato: YYYY-MM-DD
+      const date = match?.[1];
       const stats = await this.tradeService.getHourlyStats(date);
       
       if (stats.length === 0) {
@@ -128,7 +128,10 @@ export class TelegramManager {
 
       stats.forEach(stat => {
         const hourEnd = stat.hour + 2;
-        message += `*${stat.date} ${stat.hour.toString().padStart(2, '0')}:00-${hourEnd.toString().padStart(2, '0')}:00*\n` +
+        const brazilianDateTime = this.formatBrazilianDateTime(stat.date, stat.hour);
+        const brazilianEndTime = this.formatBrazilianDateTime(stat.date, hourEnd);
+        
+        message += `*${brazilianDateTime}-${brazilianEndTime}*\n` +
           `Trades: ${stat.totalTrades || 0}\n` +
           `Taxa de Acerto: ${stat.winRate?.toFixed(2) || '0.00'}%\n` +
           `Lucro Total: $${(stat.totalProfit || 0).toFixed(2)}\n` +
@@ -257,5 +260,11 @@ export class TelegramManager {
     ALLOWED_CHAT_IDS.forEach(chatId => {
       this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     });
+  }
+
+  private formatBrazilianDateTime(date: string, hour: number): string {
+    // Converte para horário brasileiro (UTC-3)
+    const brazilHour = (hour - 3 + 24) % 24;
+    return `${date} ${brazilHour.toString().padStart(2, '0')}:00`;
   }
 } 

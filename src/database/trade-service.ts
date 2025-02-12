@@ -21,6 +21,20 @@ export class TradeService {
 
   constructor(private db: Database) {}
 
+  private getLocalDate(date?: Date): string {
+    const d = date || new Date();
+    // Ajusta para UTC-3 (Brasil)
+    const brazilTime = new Date(d.getTime() - (3 * 60 * 60 * 1000));
+    return brazilTime.toISOString().split('T')[0];
+  }
+
+  private getLocalHour(date?: Date): number {
+    const d = date || new Date();
+    // Ajusta para UTC-3 (Brasil)
+    const brazilTime = new Date(d.getTime() - (3 * 60 * 60 * 1000));
+    return brazilTime.getHours();
+  }
+
   async saveTrade(trade: {
     isWin: boolean;
     stake: number;
@@ -28,9 +42,8 @@ export class TradeService {
     balanceAfter: number;
   }) {
     const now = new Date();
-    const date = now.toISOString().split('T')[0];
-    const currentHour = now.getHours();
-    // Arredonda para o intervalo de 2 horas mais próximo
+    const date = this.getLocalDate(now);
+    const currentHour = this.getLocalHour(now);
     const hour = Math.floor(currentHour / 2) * 2;
 
     return new Promise<void>((resolve, reject) => {
@@ -40,7 +53,7 @@ export class TradeService {
       `, [
         Date.now(),
         date,
-        hour, // Hora arredondada para intervalos de 2 horas
+        hour,
         trade.isWin ? 1 : 0,
         trade.stake,
         trade.profit,
