@@ -43,10 +43,11 @@ export class TradeService {
     balanceAfter: number;
   }) {
     const now = new Date();
-    const date = now.toISOString().split('T')[0];
-    const hour = now.getUTCHours();
+    // Salvar em UTC
+    const utcDate = now.toISOString().split('T')[0];
+    const utcHour = now.getUTCHours();
     // Garante que a hora seja sempre par
-    const hourInterval = Math.floor(hour / 2) * 2;
+    const hourInterval = Math.floor(utcHour / 2) * 2;
 
     return new Promise<void>((resolve, reject) => {
       this.db.run(`
@@ -54,7 +55,7 @@ export class TradeService {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [
         Date.now(),
-        date,
+        utcDate,
         hourInterval,
         trade.isWin ? 1 : 0,
         trade.stake,
@@ -66,11 +67,11 @@ export class TradeService {
           reject(err);
           return;
         }
-        await this.updateHourlyStats(date, hourInterval);
+        await this.updateHourlyStats(utcDate, hourInterval);
         await this.updateSequenceStats({
           isWin: trade.isWin,
           timestamp: Date.now(),
-          date
+          date: utcDate
         });
         resolve();
       });
@@ -192,7 +193,8 @@ export class TradeService {
     }>>((resolve) => {
       const now = new Date();
       const currentDate = now.toISOString().split('T')[0];
-      const currentHour = Math.floor(now.getUTCHours() / 2) * 2;
+      const currentHour = now.getUTCHours();
+      const currentInterval = Math.floor(currentHour / 2) * 2;
 
       const query = date 
         ? `SELECT * FROM hourly_stats WHERE date = ? ORDER BY hour ASC`
@@ -202,7 +204,7 @@ export class TradeService {
           ORDER BY date DESC, hour ASC
         `;
       
-      const params = date ? [date] : [currentDate, currentDate, currentHour];
+      const params = date ? [date] : [currentDate, currentDate, currentInterval];
 
       this.db.all(query, params, (err, rows: any[]) => {
         if (err) {

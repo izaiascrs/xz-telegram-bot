@@ -341,7 +341,7 @@ export class TelegramManager {
     const brazilHour = (hour - 3 + 24) % 24;
     // Garante que a hora inicial seja par
     const startHour = Math.floor(brazilHour / 2) * 2;
-    const endHour = startHour + 2;
+    const endHour = (startHour + 2) % 24;
     
     const formattedStartHour = startHour.toString().padStart(2, '0');
     const formattedEndHour = endHour.toString().padStart(2, '0');
