@@ -1,31 +1,27 @@
 import "dotenv/config";
-import { RealMoneyManager } from "./money-management";
-import { MoneyManagement } from "./money-management/types";
+import { MoneyManagementV2 } from "./money-management/types";
 import apiManager from "./ws";
 import { ContractStatus, TicksStreamResponse } from "@deriv/api-types";
 import { DERIV_TOKEN } from "./utils/constants";
 import { TelegramManager } from "./telegram";
 import { TradeService } from "./database/trade-service";
 import { initDatabase } from "./database/schema";
+import { MoneyManager } from "./money-management/moneyManager";
 
 type TSymbol = (typeof symbols)[number];
 const symbols = ["R_10"] as const;
 
-const BALANCE_TO_START_TRADING = 10_000;
+const BALANCE_TO_START_TRADING = 100;
 const CONTRACT_SECONDS = 2;
 const CONTRACT_TICKS = 8;
 
-const config: MoneyManagement = {
-  type: "fixed",
+const config: MoneyManagementV2 = {
+  type: "martingale-soros",
   initialStake: 0.35,
   profitPercent: 22,
-  maxStake: 200,
-  maxLoss: 10_000,
-  sorosLevel: 3,
-  enableSoros: true,
-  sorosPercent: 50,
-  winsBeforeRecovery: 3,
-  initialBalance: BALANCE_TO_START_TRADING
+  maxStake: 100,
+  maxLoss: 7,
+  sorosLevel: 20,
 };
 
 let isAuthorized = false;
@@ -48,7 +44,7 @@ let activeSubscriptions: any[] = [];
 const database = initDatabase();
 const tradeService = new TradeService(database);
 const telegramManager = new TelegramManager(tradeService);
-const moneyManager = new RealMoneyManager(config, BALANCE_TO_START_TRADING);
+const moneyManager = new MoneyManager(config, BALANCE_TO_START_TRADING);
 
 const ticksMap = new Map<TSymbol, number[]>([]);
 
@@ -66,6 +62,8 @@ function clearTradeTimeout() {
     lastContractIntervalId = null;
   }
 }
+
+
 
 function handleTradeResult({
   profit,
@@ -98,8 +96,8 @@ function handleTradeResult({
     consecutiveWins = 0;
   }
   
-  moneyManager.updateBalance(Number(newBalance.toFixed(2)));
-  moneyManager.updateLastTrade(isWin, stake);
+  // moneyManager.updateBalance(Number(newBalance.toFixed(2)));
+  moneyManager.updateLastTrade(isWin);
   telegramManager.updateTradeResult(isWin, moneyManager.getCurrentBalance());
 
   const resultMessage = isWin ? "✅ Trade ganho!" : "❌ Trade perdido!";

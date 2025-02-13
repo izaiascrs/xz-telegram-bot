@@ -1,5 +1,14 @@
 export type ManagementType = 'fixed' | 'martingale' | 'soros' | 'martingale-soros';
 
+export type MoneyManagementV2 = {
+  type: 'fixed' | 'martingale' | 'soros' | 'martingale-soros';
+  initialStake: number;
+  maxStake?: number;
+  profitPercent: number;
+  maxLoss?: number;
+  sorosLevel?: number;
+};
+
 export type MoneyManagement = {
   type: "fixed" | "martingale-soros" | "fixed-with-recovery";
   initialStake: number;
