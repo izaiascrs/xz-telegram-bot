@@ -84,11 +84,10 @@ export class MoneyManager {
     // Atualiza contadores
     if (success) {
       this.consecutiveLosses = 0;
-      // Se recuperou as perdas, sai do modo recovery
-      if (this.recoveryMode && profit >= this.accumulatedLoss) {
-        this.recoveryMode = false;
-        this.accumulatedLoss = 0;
-        this.consecutiveWins = 0;
+      // Só reseta o modo de recuperação se foi um martingale bem sucedido
+      if (this.recoveryMode) {
+        this.consecutiveWins++;
+        // Não reseta aqui, deixa o calculateMartingaleSorosStake fazer isso
       }
     } else {
       this.consecutiveLosses++;
@@ -148,25 +147,25 @@ export class MoneyManager {
     if (this.lastTrade?.type === 'win') {
       // Se estava em modo de recuperação
       if (this.recoveryMode) {
-        this.consecutiveWins++;
-        
-        // Verifica se atingiu wins necessários para martingale
-        if (this.consecutiveWins >= (this.config.winsBeforeMartingale || 1)) {
-          // Calcula stake para recuperar perdas
-          const neededProfit = this.accumulatedLoss;
+        // Verifica se atingiu wins necessários para martingale (1 win)
+        if (this.consecutiveWins >= 1) {
+          // Calcula stake para recuperar perdas + stake inicial
+          const neededProfit = this.accumulatedLoss + this.config.initialStake;
           const profitRate = this.config.profitPercent / 100;
-          const recoveryStake = (neededProfit + this.config.initialStake) / profitRate;
+          const recoveryStake = neededProfit / profitRate;
 
-          return Math.min(
+          const finalStake = Math.min(
             recoveryStake,
             this.config.maxStake || Infinity,
             this.currentBalance
           );
+
+          // Após usar martingale, reseta o modo de recuperação
+          this.recoveryMode = false;
+          this.consecutiveWins = 0;
+          this.accumulatedLoss = 0;
           
-          // // Verifica limites
-          // if (recoveryStake <= this.config.maxStake! && recoveryStake <= this.currentBalance) {
-          //   return recoveryStake;
-          // }
+          return finalStake;
         }
         return this.config.initialStake;
       }

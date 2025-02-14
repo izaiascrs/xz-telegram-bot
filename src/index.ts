@@ -364,7 +364,7 @@ const authorize = async () => {
 
 // Adicionar verificação periódica do estado do bot
 setInterval(() => {
-  if (telegramManager.isRunningBot() && !isTrading && !waitingVirtualLoss) {
+  if (telegramManager.isRunningBot() && !isTrading && !waitingVirtualLoss && moneyManager.getCurrentBalance() > 0) {
     // Verificar se o bot está "travado"
     const lastActivity = Date.now() - lastActivityTimestamp;
     if (lastActivity > 60000) { // 60 segundos sem atividade
