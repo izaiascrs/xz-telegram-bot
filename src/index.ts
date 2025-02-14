@@ -416,4 +416,4 @@ function main() {
   }, 10_000);
 }
 
-// main();
+main();

@@ -86,7 +86,7 @@ export class MoneyManager {
       this.consecutiveLosses = 0;
       // Não precisa mais verificar se recuperou as perdas
       // Apenas reseta os contadores após um win
-      if (this.recoveryMode) {
+      if (this.recoveryMode && this.consecutiveWins >= (this.config.winsBeforeMartingale || 1)) {
         this.recoveryMode = false;
         this.accumulatedLoss = 0;
         this.consecutiveWins = 0;
@@ -148,15 +148,17 @@ export class MoneyManager {
   private calculateMartingaleSorosStake(): number {
     if (this.lastTrade?.type === 'win') {
       // Se estava em modo de recuperação
+
       if (this.recoveryMode) {
         this.consecutiveWins++;
         
-        // Verifica se atingiu wins necessários para martingale (1 win)
-        if (this.consecutiveWins >= 1) {
-          // Calcula stake para recuperar perdas + stake inicial
-          const neededProfit = this.accumulatedLoss + this.config.initialStake;
+        // Verifica se atingiu wins necessários para martingale
+        
+        if (this.consecutiveWins >= (this.config.winsBeforeMartingale || 1)) {
+          // Calcula stake para recuperar perdas
+          const neededProfit = this.accumulatedLoss;
           const profitRate = this.config.profitPercent / 100;
-          const recoveryStake = neededProfit / profitRate;
+          const recoveryStake = (neededProfit + this.config.initialStake) / profitRate;
 
           const finalStake = Math.min(
             recoveryStake,
@@ -165,6 +167,7 @@ export class MoneyManager {
           );
 
           // Após usar martingale, reseta o modo de recuperação
+          // mesmo que não tenha recuperado tudo
           this.recoveryMode = false;
           this.consecutiveWins = 0;
           this.accumulatedLoss = 0;
