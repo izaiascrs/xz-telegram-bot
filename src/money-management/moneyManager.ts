@@ -9,7 +9,6 @@ export class MoneyManager {
   private lastTrade: TradeResult | null = null;
   private accumulatedLoss: number = 0;
   private recoveryMode: boolean = false;
-  private wasLastTradeMartingale: boolean = false;
 
   constructor(
     private config: MoneyManagementV2,
@@ -85,14 +84,17 @@ export class MoneyManager {
     // Atualiza contadores
     if (success) {
       this.consecutiveLosses = 0;
+      // Não precisa mais verificar se recuperou as perdas
+      // Apenas reseta os contadores após um win
       if (this.recoveryMode) {
-        this.consecutiveWins++;
+        this.recoveryMode = false;
+        this.accumulatedLoss = 0;
+        this.consecutiveWins = 0;
       }
     } else {
       this.consecutiveLosses++;
       this.consecutiveWins = 0;
       this.sorosLevel = 0;
-      this.wasLastTradeMartingale = false;
     }
   }
 
@@ -145,15 +147,10 @@ export class MoneyManager {
 
   private calculateMartingaleSorosStake(): number {
     if (this.lastTrade?.type === 'win') {
-      // Se o último trade foi um martingale, retorna stake inicial
-      if (this.wasLastTradeMartingale) {
-        this.wasLastTradeMartingale = false;
-        this.sorosLevel = 0;
-        return this.config.initialStake;
-      }
-
       // Se estava em modo de recuperação
       if (this.recoveryMode) {
+        this.consecutiveWins++;
+        
         // Verifica se atingiu wins necessários para martingale (1 win)
         if (this.consecutiveWins >= 1) {
           // Calcula stake para recuperar perdas + stake inicial
@@ -167,9 +164,6 @@ export class MoneyManager {
             this.currentBalance
           );
 
-          // Marca que este trade será um martingale
-          this.wasLastTradeMartingale = true;
-          
           // Após usar martingale, reseta o modo de recuperação
           this.recoveryMode = false;
           this.consecutiveWins = 0;
@@ -189,7 +183,6 @@ export class MoneyManager {
       this.recoveryMode = true;
       this.consecutiveWins = 0;
       this.sorosLevel = 0;
-      this.wasLastTradeMartingale = false;
       this.accumulatedLoss += Math.abs(this.lastTrade.profit);
       
       // Volta para stake inicial em loss

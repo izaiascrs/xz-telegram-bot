@@ -22,7 +22,7 @@ const config: MoneyManagementV2 = {
   maxStake: 100,
   maxLoss: 7,
   sorosLevel: 20,
-  winsBeforeMartingale: 1,
+  winsBeforeMartingale: 3,
 };
 
 let isAuthorized = false;
@@ -416,4 +416,4 @@ function main() {
   }, 10_000);
 }
 
-main();
+// main();
