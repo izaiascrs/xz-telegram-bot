@@ -4,9 +4,11 @@ export class MoneyManager {
   private currentBalance: number;
   private currentStake: number;
   private consecutiveLosses: number = 0;
+  private consecutiveWins: number = 0;
   private sorosLevel: number = 0;
   private lastTrade: TradeResult | null = null;
-  private accumulatedProfit: number = 0;
+  private accumulatedLoss: number = 0;
+  private recoveryMode: boolean = false;
 
   constructor(
     private config: MoneyManagementV2,
@@ -14,7 +16,6 @@ export class MoneyManager {
   ) {
     this.currentBalance = initialBalance;
     this.currentStake = config.initialStake;
-    this.accumulatedProfit = 0;
   }
 
   calculateNextStake(): number {
@@ -83,10 +84,16 @@ export class MoneyManager {
     // Atualiza contadores
     if (success) {
       this.consecutiveLosses = 0;
+      // Se recuperou as perdas, sai do modo recovery
+      if (this.recoveryMode && profit >= this.accumulatedLoss) {
+        this.recoveryMode = false;
+        this.accumulatedLoss = 0;
+        this.consecutiveWins = 0;
+      }
     } else {
       this.consecutiveLosses++;
+      this.consecutiveWins = 0;
       this.sorosLevel = 0;
-      this.accumulatedProfit = 0;
     }
   }
 
@@ -139,18 +146,47 @@ export class MoneyManager {
 
   private calculateMartingaleSorosStake(): number {
     if (this.lastTrade?.type === 'win') {
-      // Se o último trade foi win após um martingale (tinha losses consecutivos)
-      if (this.consecutiveLosses > 0) {
-        this.consecutiveLosses = 0;
-        // Após martingale, também adiciona o lucro à stake inicial
-        return this.config.initialStake + (this.lastTrade?.profit || 0);
+      // Se estava em modo de recuperação
+      if (this.recoveryMode) {
+        this.consecutiveWins++;
+        
+        // Verifica se atingiu wins necessários para martingale
+        if (this.consecutiveWins >= (this.config.winsBeforeMartingale || 1)) {
+          // Calcula stake para recuperar perdas
+          const neededProfit = this.accumulatedLoss;
+          const profitRate = this.config.profitPercent / 100;
+          const recoveryStake = (neededProfit + this.config.initialStake) / profitRate;
+
+          return Math.min(
+            recoveryStake,
+            this.config.maxStake || Infinity,
+            this.currentBalance
+          );
+          
+          // // Verifica limites
+          // if (recoveryStake <= this.config.maxStake! && recoveryStake <= this.currentBalance) {
+          //   return recoveryStake;
+          // }
+        }
+        return this.config.initialStake;
       }
-      // Se não tinha losses consecutivos, aplica soros normal
+      
+      // Se não estava em recovery, aplica soros normal
       return this.calculateSorosStake();
     }
     
-    // Se perdeu, aplica martingale
-    return this.calculateMartingaleStake();
+    // Se perdeu
+    if (this.lastTrade?.type === 'loss') {
+      this.recoveryMode = true;
+      this.consecutiveWins = 0;
+      this.sorosLevel = 0;
+      this.accumulatedLoss += Math.abs(this.lastTrade.profit);
+      
+      // Volta para stake inicial em loss
+      return this.config.initialStake;
+    }
+    
+    return this.config.initialStake;
   }
 
   getCurrentBalance(): number {

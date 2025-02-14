@@ -22,6 +22,7 @@ const config: MoneyManagementV2 = {
   maxStake: 100,
   maxLoss: 7,
   sorosLevel: 20,
+  winsBeforeMartingale: 1,
 };
 
 let isAuthorized = false;
@@ -62,8 +63,6 @@ function clearTradeTimeout() {
     lastContractIntervalId = null;
   }
 }
-
-
 
 function handleTradeResult({
   profit,
@@ -169,6 +168,7 @@ const clearSubscriptions = async () => {
     // Resetar todos os estados
     isTrading = false;
     waitingVirtualLoss = false;
+    isAuthorized = false;
     tickCount = 0;
     ticksMap.clear();
     
@@ -397,6 +397,12 @@ function main() {
     telegramManager.sendMessage("⚠️ Conexão WebSocket fechada");
   });
 
+  apiManager.connection.addEventListener("error", async (event) => {
+    console.error("Erro na conexão:", event);
+    telegramManager.sendMessage("❌ Erro na conexão com o servidor Deriv");
+    await clearSubscriptions();
+  });
+
   // Observadores do estado do bot do Telegram
   setInterval(async () => {
     if (telegramManager.isRunningBot() && !subscriptions.ticks) {
@@ -407,7 +413,7 @@ function main() {
     ) {
       await stopBot();
     }
-  }, 1000);
+  }, 10_000);
 }
 
 main();
