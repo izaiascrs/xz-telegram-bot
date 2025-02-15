@@ -1,19 +1,21 @@
 import "dotenv/config";
 import { MoneyManagementV2 } from "./money-management/types";
-import apiManager from "./ws";
-import { ContractStatus, TicksStreamResponse } from "@deriv/api-types";
-import { DERIV_TOKEN } from "./utils/constants";
-import { TelegramManager } from "./telegram";
 import { TradeService } from "./database/trade-service";
 import { initDatabase } from "./database/schema";
 import { MoneyManager } from "./money-management/moneyManager";
+import { getBackTestResults } from "./backtest";
+import { schedule } from 'node-cron';
+import { ContractStatus, TicksStreamResponse } from "@deriv/api-types";
+import { TelegramManager } from "./telegram";
+import apiManager from "./ws";
+import { DERIV_TOKEN } from "./utils/constants";
 
 type TSymbol = (typeof symbols)[number];
 const symbols = ["R_10"] as const;
 
 const BALANCE_TO_START_TRADING = 100;
 const CONTRACT_SECONDS = 2;
-const CONTRACT_TICKS = 8;
+let CONTRACT_TICKS = 8;
 
 const config: MoneyManagementV2 = {
   type: "martingale-soros",
@@ -22,7 +24,7 @@ const config: MoneyManagementV2 = {
   maxStake: 100,
   maxLoss: 7,
   sorosLevel: 20,
-  winsBeforeMartingale: 3,
+  winsBeforeMartingale: 1,
 };
 
 let isAuthorized = false;
@@ -48,6 +50,31 @@ const telegramManager = new TelegramManager(tradeService);
 const moneyManager = new MoneyManager(config, BALANCE_TO_START_TRADING);
 
 const ticksMap = new Map<TSymbol, number[]>([]);
+
+
+const task = schedule('*/30 * * * *', () => {
+  telegramManager.sendMessage("⏳ Iniciando backtest...");
+  getBackTestResults().then((results) => {
+    const bestResult = results.length > 0 ? results[0] : null;
+
+    if(!bestResult) return;  
+    const backtest = bestResult.backtest;
+
+    const bestBacktestWinRate = backtest.reduce((best, current) => {
+      return current.winRate > best.winRate ? current : best;
+    }, backtest[0]);
+
+    const { winRate, ticks} = bestBacktestWinRate;
+    CONTRACT_TICKS = ticks;
+    telegramManager.sendMessage(
+      `✅ Backtest finalizado com sucesso!\n` +
+      `🔄 Ticks: ${ticks}\n` +
+      `💰 Win Rate: ${winRate}%`
+    );
+  });
+},  {
+  scheduled: false,
+});
 
 function createTradeTimeout() {
   lastContractIntervalId = setInterval(() => {
@@ -417,3 +444,5 @@ function main() {
 }
 
 main();
+
+task.start();
