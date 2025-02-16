@@ -9,6 +9,9 @@ export class MoneyManager {
   private lastTrade: TradeResult | null = null;
   private accumulatedLoss: number = 0;
   private recoveryMode: boolean = false;
+  private currentWinsRequired: number;
+  private maxWinsRequired: number;
+  private isMartingaleTrade: boolean = false;
 
   constructor(
     private config: MoneyManagementV2,
@@ -16,6 +19,8 @@ export class MoneyManager {
   ) {
     this.currentBalance = initialBalance;
     this.currentStake = config.initialStake;
+    this.maxWinsRequired = config.winsBeforeMartingale || 3;
+    this.currentWinsRequired = this.maxWinsRequired;
   }
 
   calculateNextStake(): number {
@@ -84,9 +89,8 @@ export class MoneyManager {
     // Atualiza contadores
     if (success) {
       this.consecutiveLosses = 0;
-      // Não precisa mais verificar se recuperou as perdas
-      // Apenas reseta os contadores após um win
-      if (this.recoveryMode && this.consecutiveWins >= (this.config.winsBeforeMartingale || 1)) {
+      // Verifica se está em recovery e atingiu wins necessários
+      if (this.recoveryMode && this.consecutiveWins >= this.currentWinsRequired) {
         this.recoveryMode = false;
         this.accumulatedLoss = 0;
         this.consecutiveWins = 0;
@@ -147,15 +151,10 @@ export class MoneyManager {
 
   private calculateMartingaleSorosStake(): number {
     if (this.lastTrade?.type === 'win') {
-      // Se estava em modo de recuperação
-
       if (this.recoveryMode) {
         this.consecutiveWins++;
         
-        // Verifica se atingiu wins necessários para martingale
-        
-        if (this.consecutiveWins >= (this.config.winsBeforeMartingale || 1)) {
-          // Calcula stake para recuperar perdas
+        if (this.consecutiveWins >= this.currentWinsRequired) {
           const neededProfit = this.accumulatedLoss;
           const profitRate = this.config.profitPercent / 100;
           const recoveryStake = (neededProfit + this.config.initialStake) / profitRate;
@@ -166,29 +165,32 @@ export class MoneyManager {
             this.currentBalance
           );
 
-          // Após usar martingale, reseta o modo de recuperação
-          // mesmo que não tenha recuperado tudo
           this.recoveryMode = false;
           this.consecutiveWins = 0;
           this.accumulatedLoss = 0;
+          this.isMartingaleTrade = true;
           
           return finalStake;
         }
         return this.config.initialStake;
       }
       
-      // Se não estava em recovery, aplica soros normal
+      this.isMartingaleTrade = false;
       return this.calculateSorosStake();
     }
     
-    // Se perdeu
     if (this.lastTrade?.type === 'loss') {
+      if (this.isMartingaleTrade) {
+        this.currentWinsRequired = Math.floor(Math.random() * this.maxWinsRequired) + 1;
+        console.log(`Martingale falhou. Novo número de wins necessários: ${this.currentWinsRequired}`);
+      }
+
       this.recoveryMode = true;
       this.consecutiveWins = 0;
       this.sorosLevel = 0;
       this.accumulatedLoss += Math.abs(this.lastTrade.profit);
+      this.isMartingaleTrade = false;
       
-      // Volta para stake inicial em loss
       return this.config.initialStake;
     }
     
@@ -209,7 +211,9 @@ export class MoneyManager {
       consecutiveLosses: this.consecutiveLosses,
       sorosLevel: this.sorosLevel,
       lastStake: this.lastTrade?.stake || 0,
-      lastProfit: this.lastTrade?.profit || 0
+      lastProfit: this.lastTrade?.profit || 0,
+      winsRequired: this.currentWinsRequired,
+      currentWins: this.consecutiveWins
     };
   }
 } 

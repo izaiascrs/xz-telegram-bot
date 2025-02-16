@@ -4,7 +4,7 @@ import { TradeService } from "./database/trade-service";
 import { initDatabase } from "./database/schema";
 import { MoneyManager } from "./money-management/moneyManager";
 import { getBackTestResults } from "./backtest";
-import { schedule } from 'node-cron';
+import { schedule, validate } from 'node-cron';
 import { ContractStatus, TicksStreamResponse } from "@deriv/api-types";
 import { TelegramManager } from "./telegram";
 import apiManager from "./ws";
@@ -16,6 +16,7 @@ const symbols = ["R_10"] as const;
 const BALANCE_TO_START_TRADING = 100;
 const CONTRACT_SECONDS = 2;
 let CONTRACT_TICKS = 8;
+let NEXT_CONTRACT_TICKS: number | undefined = undefined;
 
 const config: MoneyManagementV2 = {
   type: "martingale-soros",
@@ -52,7 +53,10 @@ const moneyManager = new MoneyManager(config, BALANCE_TO_START_TRADING);
 
 const ticksMap = new Map<TSymbol, number[]>([]);
 
-const task = schedule('*/30 * * * *', () => {
+console.log(validate('0 21 * * *'));
+
+
+const task = schedule('0 21 * * *', () => {
   telegramManager.sendMessage("⏳ Iniciando backtest...");
   getBackTestResults().then((results) => {
     const bestResult = results.length > 0 ? results[0] : null;
@@ -61,8 +65,13 @@ const task = schedule('*/30 * * * *', () => {
     const backtest = bestResult.backtest;
     const digit = bestResult.digit;
     const { winRate, ticks } = backtest;
+    if(isTrading) {
+      NEXT_CONTRACT_TICKS = ticks;
+    } else {
+      CONTRACT_TICKS = ticks;
+      NEXT_CONTRACT_TICKS = undefined;
+    }
     signalDigit = digit;
-    CONTRACT_TICKS = ticks;
     telegramManager.sendMessage(
       `✅ Backtest finalizado com sucesso!\n` +
       `🔢 Digito: ${digit}\n` +
@@ -72,6 +81,7 @@ const task = schedule('*/30 * * * *', () => {
   });
 },  {
   scheduled: false,
+  timezone: "America/Sao_Paulo"
 });
 
 function createTradeTimeout() {
@@ -284,6 +294,12 @@ const subscribeToTicks = (symbol: TSymbol) => {
         if (tickCount === CONTRACT_TICKS) {
           updateActivityTimestamp(); // Atualizar timestamp ao processar loss virtual
           const isWin = lastTick > signalDigit;
+
+          // Atualizar ticks do próximo contrato
+          if(NEXT_CONTRACT_TICKS) {
+            CONTRACT_TICKS = NEXT_CONTRACT_TICKS;
+            NEXT_CONTRACT_TICKS = undefined;
+          }
 
           if (!isWin) {
             waitingVirtualLoss = false;
