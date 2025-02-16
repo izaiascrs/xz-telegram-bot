@@ -21,7 +21,7 @@ const config: MoneyManagementV2 = {
   type: "martingale-soros",
   initialStake: 0.35,
   profitPercent: 22,
-  maxStake: 30,
+  maxStake: 100,
   maxLoss: 7,
   sorosLevel: 20,
   winsBeforeMartingale: 1,
@@ -34,6 +34,7 @@ let tickCount = 0;
 let consecutiveWins = 0;
 let lastContractId: number | undefined = undefined;
 let lastContractIntervalId: NodeJS.Timeout | null = null;
+let signalDigit = 3;
 
 let subscriptions: {
   ticks?: any;
@@ -51,7 +52,6 @@ const moneyManager = new MoneyManager(config, BALANCE_TO_START_TRADING);
 
 const ticksMap = new Map<TSymbol, number[]>([]);
 
-
 const task = schedule('*/30 * * * *', () => {
   telegramManager.sendMessage("⏳ Iniciando backtest...");
   getBackTestResults().then((results) => {
@@ -59,17 +59,15 @@ const task = schedule('*/30 * * * *', () => {
 
     if(!bestResult) return;  
     const backtest = bestResult.backtest;
-
-    const bestBacktestWinRate = backtest.reduce((best, current) => {
-      return current.winRate > best.winRate ? current : best;
-    }, backtest[0]);
-
-    const { winRate, ticks} = bestBacktestWinRate;
+    const digit = bestResult.digit;
+    const { winRate, ticks } = backtest;
+    signalDigit = digit;
     CONTRACT_TICKS = ticks;
     telegramManager.sendMessage(
       `✅ Backtest finalizado com sucesso!\n` +
+      `🔢 Digito: ${digit}\n` +
       `🔄 Ticks: ${ticks}\n` +
-      `💰 Win Rate: ${winRate}%`
+      `💰 Win Rate: ${winRate.toFixed(2)}%`
     );
   });
 },  {
@@ -283,9 +281,9 @@ const subscribeToTicks = (symbol: TSymbol) => {
     if (isTrading) {
       if (waitingVirtualLoss) {
         tickCount++;
-        if (tickCount === 8) {
+        if (tickCount === CONTRACT_TICKS) {
           updateActivityTimestamp(); // Atualizar timestamp ao processar loss virtual
-          const isWin = lastTick > 1;
+          const isWin = lastTick > signalDigit;
 
           if (!isWin) {
             waitingVirtualLoss = false;
@@ -297,7 +295,7 @@ const subscribeToTicks = (symbol: TSymbol) => {
         }
       }
     } else {
-      if (lastTick === 3) {
+      if (lastTick === signalDigit) {
         updateActivityTimestamp(); // Atualizar timestamp ao identificar sinal
         if (!waitingVirtualLoss) {
           let amount = moneyManager.calculateNextStake();
