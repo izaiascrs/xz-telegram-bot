@@ -27,7 +27,7 @@ const config: MoneyManagementV2 = {
   sorosLevel: 20,
   winsBeforeMartingale: 3,
   initialBalance: BALANCE_TO_START_TRADING,
-  targetProfit: 1,
+  targetProfit: 20,
 };
 
 let isAuthorized = false;
