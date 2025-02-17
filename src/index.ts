@@ -4,7 +4,7 @@ import { TradeService } from "./database/trade-service";
 import { initDatabase } from "./database/schema";
 import { MoneyManager } from "./money-management/moneyManager";
 import { getBackTestResults } from "./backtest";
-import { schedule, validate } from 'node-cron';
+import { schedule } from 'node-cron';
 import { ContractStatus, TicksStreamResponse } from "@deriv/api-types";
 import { TelegramManager } from "./telegram";
 import apiManager from "./ws";
@@ -26,6 +26,8 @@ const config: MoneyManagementV2 = {
   maxLoss: 7,
   sorosLevel: 20,
   winsBeforeMartingale: 3,
+  initialBalance: BALANCE_TO_START_TRADING,
+  targetProfit: 20,
 };
 
 let isAuthorized = false;
@@ -49,12 +51,20 @@ let activeSubscriptions: any[] = [];
 const database = initDatabase();
 const tradeService = new TradeService(database);
 const telegramManager = new TelegramManager(tradeService);
-const moneyManager = new MoneyManager(config, BALANCE_TO_START_TRADING);
+const moneyManager = new MoneyManager(config, config.initialBalance);
+
+// Configura callback para quando atingir o lucro alvo
+moneyManager.setOnTargetReached((profit, balance) => {
+  const message = `🎯 Lucro alvo atingido!\n\n` +
+    `💰 Lucro: $${profit.toFixed(2)}\n` +
+    `🎯 Meta: $${config.targetProfit}\n` +
+    `💵 Saldo: $${balance.toFixed(2)}\n\n` +
+    `✨ Reiniciando sessão com saldo inicial de $${config.initialBalance.toFixed(2)}`;
+
+  telegramManager.sendMessage(message);
+});
 
 const ticksMap = new Map<TSymbol, number[]>([]);
-
-console.log(validate('0 21 * * *'));
-
 
 const task = schedule('0 21 * * *', () => {
   telegramManager.sendMessage("⏳ Iniciando backtest...");
@@ -459,4 +469,4 @@ function main() {
 
 main();
 
-task.start();
+// task.start();

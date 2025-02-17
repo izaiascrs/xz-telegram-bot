@@ -2,6 +2,7 @@ import { MoneyManagementV2, TradeResult } from "./types";
 
 export class MoneyManager {
   private currentBalance: number;
+  private initialBalance: number;
   private currentStake: number;
   private consecutiveLosses: number = 0;
   private consecutiveWins: number = 0;
@@ -12,15 +13,22 @@ export class MoneyManager {
   private currentWinsRequired: number;
   private maxWinsRequired: number;
   private isMartingaleTrade: boolean = false;
+  private sessionProfit: number = 0;
+  private onTargetReached?: (profit: number, balance: number) => void;
 
   constructor(
     private config: MoneyManagementV2,
-    initialBalance: number
+    initialBalance: number,
   ) {
     this.currentBalance = initialBalance;
+    this.initialBalance = initialBalance;
     this.currentStake = config.initialStake;
     this.maxWinsRequired = config.winsBeforeMartingale || 3;
     this.currentWinsRequired = this.maxWinsRequired;
+  }
+
+  setOnTargetReached(callback: (profit: number, balance: number) => void) {
+    this.onTargetReached = callback;
   }
 
   calculateNextStake(): number {
@@ -77,6 +85,19 @@ export class MoneyManager {
       : -stake;
     
     this.currentBalance += profit;
+    this.sessionProfit += profit;
+
+    // Verifica se atingiu lucro alvo
+    if (this.config.targetProfit && this.sessionProfit >= this.config.targetProfit) {
+      console.log(`🎯 Lucro alvo de $${this.config.targetProfit} atingido! Reiniciando saldo...`);
+      
+      // Notifica antes de resetar
+      if (this.onTargetReached) {
+        this.onTargetReached(this.sessionProfit, this.currentBalance);
+      }
+      
+      this.resetSession();
+    }
     
     this.lastTrade = {
       success,
@@ -89,7 +110,6 @@ export class MoneyManager {
     // Atualiza contadores
     if (success) {
       this.consecutiveLosses = 0;
-      // Verifica se está em recovery e atingiu wins necessários
       if (this.recoveryMode && this.consecutiveWins >= this.currentWinsRequired) {
         this.recoveryMode = false;
         this.accumulatedLoss = 0;
@@ -100,6 +120,20 @@ export class MoneyManager {
       this.consecutiveWins = 0;
       this.sorosLevel = 0;
     }
+  }
+
+  private resetSession() {
+    // Reseta para o saldo inicial
+    this.currentBalance = this.initialBalance;
+    this.sessionProfit = 0;
+    this.currentStake = this.config.initialStake;
+    this.consecutiveLosses = 0;
+    this.consecutiveWins = 0;
+    this.sorosLevel = 0;
+    this.accumulatedLoss = 0;
+    this.recoveryMode = false;
+    this.isMartingaleTrade = false;
+    this.currentWinsRequired = this.maxWinsRequired;
   }
 
   private calculateFixedStake(): number {
@@ -208,6 +242,9 @@ export class MoneyManager {
   getStats() {
     return {
       currentBalance: this.currentBalance,
+      initialBalance: this.initialBalance,
+      sessionProfit: this.sessionProfit,
+      targetProfit: this.config.targetProfit,
       consecutiveLosses: this.consecutiveLosses,
       sorosLevel: this.sorosLevel,
       lastStake: this.lastTrade?.stake || 0,

@@ -288,7 +288,7 @@ export class TelegramManager {
   private getBasicStatus(): string {
     const runtime = this.startTime ? this.getRuntime() : 'Bot não iniciado';
     const winRate = this.calculateWinRate();
-    
+        
     return `*📊 Status do Bot*\n\n` +
            `*Status:* ${this.isRunning ? '🟢 Ativo' : '🔴 Parado'}\n` +
            `*Tempo em execução:* ${runtime}\n` +
