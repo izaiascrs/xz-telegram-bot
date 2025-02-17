@@ -414,19 +414,20 @@ const authorize = async () => {
 };
 
 // Adicionar verificação periódica do estado do bot
-setInterval(() => {
+setInterval(async () => {
   if (telegramManager.isRunningBot() && !isTrading && !waitingVirtualLoss && moneyManager.getCurrentBalance() > 0) {
     // Verificar se o bot está "travado"
     const lastActivity = Date.now() - lastActivityTimestamp;
-    if (lastActivity > 60000) { // 60 segundos sem atividade
+    if (lastActivity > (60_000 * 2)) { // 2 minutos sem atividade
       console.log("Detectado possível travamento do bot, resetando estados...");
       isTrading = false;
       waitingVirtualLoss = false;
       tickCount = 0;
       lastActivityTimestamp = Date.now();
+      await clearSubscriptions();
     }
   }
-}, 10000);
+}, (30_000)); // 30 segundos
 
 // Adicionar timestamp da última atividade
 let lastActivityTimestamp = Date.now();

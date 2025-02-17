@@ -8,6 +8,8 @@ export type MoneyManagementV2 = {
   maxLoss?: number;
   sorosLevel?: number;
   winsBeforeMartingale?: number;
+  targetProfit?: number;
+  initialBalance: number;
 };
 
 export type MoneyManagement = {
