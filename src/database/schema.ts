@@ -4,8 +4,7 @@ export const initDatabase = () => {
   const db = new Database('trades.db');
 
   db.serialize(() => {
-    db.run(`
-      CREATE TABLE IF NOT EXISTS trades (
+    db.run(`      CREATE TABLE IF NOT EXISTS trades (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
         date TEXT NOT NULL,
@@ -33,8 +32,7 @@ export const initDatabase = () => {
       )
     `);
 
-    db.run(`
-      CREATE TABLE IF NOT EXISTS sequence_stats (
+    db.run(`      CREATE TABLE IF NOT EXISTS sequence_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         start_timestamp INTEGER NOT NULL,
         end_timestamp INTEGER NOT NULL,
@@ -52,3 +50,4 @@ export const initDatabase = () => {
 
   return db;
 }; 
+

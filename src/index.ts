@@ -30,6 +30,26 @@ const config: MoneyManagementV2 = {
   targetProfit: 20,
 };
 
+const digitsMap = new Map<number, number>([
+  [0, 6],
+  [1, 5],
+  [2, 7],
+  [3, 8],
+  [4, 8],
+  [5, 4],
+  [6, 9],
+  [7, 7],
+  [8, 8],
+  [9, 4],
+]);
+
+const tradeConfig = {
+  entryDigit: 3,
+  ticksCount: 8, 
+}
+
+let currentDigit = 3;
+
 let isAuthorized = false;
 let isTrading = false;
 let waitingVirtualLoss = false;
@@ -131,6 +151,17 @@ function handleTradeResult({
   tickCount = 0;
   lastContractId = undefined;
   waitingVirtualLoss = false;
+
+  if(!isWin) {
+    currentDigit++;
+    if(currentDigit > 9) currentDigit = 0;
+    const nextTickCount = digitsMap.get(currentDigit);
+    if(nextTickCount !== undefined) {
+      tradeConfig.entryDigit = currentDigit;
+      tradeConfig.ticksCount = nextTickCount;
+    }
+
+  }
   
   if (isWin) {
     newBalance = currentBalance + profit;
@@ -294,14 +325,14 @@ const subscribeToTicks = (symbol: TSymbol) => {
     }
 
     const currentDigits = ticksMap.get(symbol) || [];
-    const lastTick = currentDigits[currentDigits.length - 1];
+    const lastTick = currentDigits[currentDigits.length - 1];    
 
     if (!isAuthorized || !telegramManager.isRunningBot()) return;
 
     if (isTrading) {
       if (waitingVirtualLoss) {
         tickCount++;
-        if (tickCount === CONTRACT_TICKS) {
+        if (tickCount === tradeConfig.ticksCount) {
           updateActivityTimestamp(); // Atualizar timestamp ao processar loss virtual
           const isWin = lastTick > signalDigit;
 
@@ -321,7 +352,7 @@ const subscribeToTicks = (symbol: TSymbol) => {
         }
       }
     } else {
-      if (lastTick === signalDigit) {
+      if (lastTick === tradeConfig.entryDigit) {
         updateActivityTimestamp(); // Atualizar timestamp ao identificar sinal
         if (!waitingVirtualLoss) {
           let amount = moneyManager.calculateNextStake();
@@ -342,7 +373,7 @@ const subscribeToTicks = (symbol: TSymbol) => {
               symbol,
               currency: "USD",
               basis: "stake",
-              duration: CONTRACT_TICKS,
+              duration: tradeConfig.ticksCount,
               duration_unit: "t",
               amount: Number(amount.toFixed(2)),
               contract_type: "DIGITOVER",
